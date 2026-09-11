@@ -1,0 +1,63 @@
+# =========================
+# ENVIRONMENT / SECRETS
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# PYTHON
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# PRIVATE KEYS / CREDENTIALS
+# =========================
+*.pem
+*.key
+vapid_keys.json
+**/vapid_keys.json
+
+# =========================
+# USER-GENERATED RUNTIME DATA
+# =========================
+backend/uploads/
+uploads/
+
+# =========================
+# LOGS / LOCAL DATABASES
+# =========================
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# NODE / FRONTEND
+# =========================
+node_modules/
+dist/
+build/
+.vite/
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# LOCAL ARCHIVES
+# =========================
+*.zip
+
+# =========================
+# INTERNAL LOCAL FILES
+# =========================
+codebase command.txt

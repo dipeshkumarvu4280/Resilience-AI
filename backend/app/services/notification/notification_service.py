@@ -1,0 +1,589 @@
+import hashlib
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+import uuid
+
+from app.core.config import settings
+from app.db.mongodb import get_database
+from app.models.enums import (
+    NotificationCategory,
+    NotificationChannel,
+    NotificationDeliveryStatus,
+    NotificationSeverity,
+    UserRole,
+)
+from app.models.notification import (
+    InAppDeliveryState,
+    Notification,
+    NotificationDeepLink,
+    NotificationPreference,
+    NotificationPreferenceUpdate,
+    NotificationRecipientInfo,
+    NotificationUserView,
+    WhatsAppDeliveryState,
+)
+from app.services.notification.whatsapp_provider import (
+    WhatsAppProviderInterface,
+    get_whatsapp_provider,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class NotificationService:
+    """
+    Centralized, authoritative, event-driven Notification Dispatcher & Management Engine.
+    Coordinates In-App and WhatsApp channels with deduplication, recipient resolution,
+    severity escalation, preference enforcement, and simulation isolation.
+    """
+
+    def __init__(self, whatsapp_provider: Optional[WhatsAppProviderInterface] = None):
+        self._provider = whatsapp_provider
+
+    @property
+    def provider(self) -> WhatsAppProviderInterface:
+        if self._provider is not None:
+            return self._provider
+        return get_whatsapp_provider()
+
+    @staticmethod
+    def compute_fingerprint(
+        category: NotificationCategory,
+        event_type: str,
+        entity_id: Optional[str],
+        material_state: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Generate deterministic fingerprint for deduplication.
+        Allows legitimate alerts when material state changes while suppressing identical duplicate spam.
+        """
+        raw = f"{category.value}:{event_type}:{entity_id or 'none'}"
+        if material_state:
+            # Deterministic serialization of material state dict
+            serialized = json.dumps(material_state, sort_keys=True, default=str)
+            raw += f":{serialized}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _get_db(self, db: Optional[Any] = None):
+        if db is not None:
+            return db
+        return get_database()
+
+    async def get_user_preferences(
+        self, user_id: str, db: Optional[Any] = None
+    ) -> NotificationPreference:
+        """Fetch user notification preferences or create default."""
+        database = self._get_db(db)
+        doc = await database["notification_preferences"].find_one({"user_id": user_id})
+        if doc:
+            doc.pop("_id", None)
+            return NotificationPreference(**doc)
+
+        from bson import ObjectId
+        query_or: List[Dict[str, Any]] = [
+            {"user_id": user_id},
+            {"phone": user_id},
+        ]
+        if isinstance(user_id, str) and ObjectId.is_valid(user_id):
+            try:
+                query_or.append({"_id": ObjectId(user_id)})
+            except Exception:
+                pass
+
+        user_doc = await database["users"].find_one({"$or": query_or})
+        phone = None
+        if user_doc:
+            phone = user_doc.get("phone") or user_doc.get("phone_number")
+
+        pref = NotificationPreference(
+            preference_id=f"pref_{uuid.uuid4().hex[:12]}",
+            user_id=user_id,
+            in_app_enabled=True,
+            whatsapp_enabled=bool(phone),
+            phone_number=phone,
+            notify_critical=True,
+            notify_high=True,
+            notify_operational=True,
+            notify_plan_updates=True,
+            notify_monitoring=True,
+            updated_at=datetime.now(timezone.utc),
+        )
+        await database["notification_preferences"].insert_one(pref.model_dump())
+        return pref
+
+    async def update_user_preferences(
+        self, user_id: str, update: NotificationPreferenceUpdate, db: Optional[Any] = None
+    ) -> NotificationPreference:
+        """Update notification preferences for a user."""
+        database = self._get_db(db)
+        current = await self.get_user_preferences(user_id, db=database)
+        update_data = update.model_dump(exclude_unset=True)
+        update_data["updated_at"] = datetime.now(timezone.utc)
+
+        current_dict = current.model_dump()
+        current_dict.update(update_data)
+
+        await database["notification_preferences"].update_one(
+            {"user_id": user_id},
+            {"$set": current_dict},
+            upsert=True,
+        )
+        return NotificationPreference(**current_dict)
+
+    async def resolve_recipients(
+        self,
+        target_user_ids: Optional[List[str]] = None,
+        target_roles: Optional[List[UserRole]] = None,
+        exclude_user_ids: Optional[List[str]] = None,
+        db: Optional[Any] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Resolve eligible recipients based on explicit user IDs or roles.
+        """
+        database = self._get_db(db)
+        resolved_map: Dict[str, Dict[str, Any]] = {}
+        exclude_set = set(exclude_user_ids or [])
+
+        def extract_user_id_and_phone(u: dict):
+            uid = str(u.get("_id") or u.get("user_id") or u.get("phone"))
+            phone = u.get("phone") or u.get("phone_number")
+            role = u.get("role")
+            return uid, role, phone
+
+        # 1. Query by explicit user IDs
+        if target_user_ids:
+            from bson import ObjectId
+            id_objs = []
+            for tid in target_user_ids:
+                if isinstance(tid, str) and ObjectId.is_valid(tid):
+                    try:
+                        id_objs.append(ObjectId(tid))
+                    except Exception:
+                        pass
+
+            or_clauses: List[Dict[str, Any]] = [
+                {"user_id": {"$in": target_user_ids}},
+                {"phone": {"$in": target_user_ids}},
+            ]
+            if id_objs:
+                or_clauses.append({"_id": {"$in": id_objs}})
+
+            cursor = database["users"].find({
+                "$or": or_clauses,
+                "is_active": {"$ne": False},
+            })
+            async for u in cursor:
+                uid, role, phone = extract_user_id_and_phone(u)
+                if uid not in exclude_set:
+                    resolved_map[uid] = {
+                        "user_id": uid,
+                        "role": role,
+                        "phone_number": phone,
+                    }
+
+        # 2. Query by target roles
+        if target_roles:
+            role_values = [r.value if isinstance(r, UserRole) else str(r) for r in target_roles]
+            cursor = database["users"].find({
+                "role": {"$in": role_values},
+                "is_active": {"$ne": False},
+            })
+            async for u in cursor:
+                uid, role, phone = extract_user_id_and_phone(u)
+                if uid not in exclude_set:
+                    resolved_map[uid] = {
+                        "user_id": uid,
+                        "role": role,
+                        "phone_number": phone,
+                    }
+
+        # Default fallback: If no recipients resolved, find all Emergency Officers & Admins
+        if not resolved_map and not target_user_ids:
+            cursor = database["users"].find({
+                "role": {"$in": [UserRole.EMERGENCY_OFFICER.value, UserRole.ADMIN.value]},
+                "is_active": {"$ne": False},
+            })
+            async for u in cursor:
+                uid, role, phone = extract_user_id_and_phone(u)
+                if uid not in exclude_set:
+                    resolved_map[uid] = {
+                        "user_id": uid,
+                        "role": role,
+                        "phone_number": phone,
+                    }
+
+        return list(resolved_map.values())
+
+    def _format_whatsapp_message(
+        self,
+        severity: NotificationSeverity,
+        title: str,
+        message: str,
+        category: NotificationCategory,
+        metadata: Dict[str, Any],
+    ) -> str:
+        """Format an operational, truthful WhatsApp emergency alert text."""
+        lines = [
+            f"🚨 *RESILIENCE AI ALERT [{severity.value}]*",
+            f"*{title}*",
+            "",
+            message,
+        ]
+        if metadata.get("situation_title"):
+            lines.append(f"• Situation: {metadata['situation_title']}")
+        if metadata.get("location_name"):
+            lines.append(f"• Location: {metadata['location_name']}")
+        if metadata.get("shortfall_details"):
+            lines.append(f"• Shortfall: {metadata['shortfall_details']}")
+
+        lines.append("")
+        lines.append("Access Emergency Command Center for operational actions.")
+        return "\n".join(lines)
+
+    async def dispatch_event(
+        self,
+        category: NotificationCategory,
+        event_type: str,
+        severity: NotificationSeverity,
+        title: str,
+        message: str,
+        event_id: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        entity_id: Optional[str] = None,
+        situation_id: Optional[str] = None,
+        coordination_plan_id: Optional[str] = None,
+        view_hint: Optional[str] = None,
+        target_user_ids: Optional[List[str]] = None,
+        target_roles: Optional[List[UserRole]] = None,
+        exclude_user_ids: Optional[List[str]] = None,
+        material_state: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        is_simulation: bool = False,
+        db: Optional[Any] = None,
+    ) -> Optional[Notification]:
+        """
+        Unified entry point to generate and deliver event-driven notifications.
+        Enforces idempotency, recipient resolution, preference filtering,
+        severity escalation policy, and simulation safety.
+        """
+        database = self._get_db(db)
+        meta = metadata or {}
+        now = datetime.now(timezone.utc)
+
+        # 1. Deduplication / Idempotency Check
+        fingerprint = self.compute_fingerprint(
+            category=category,
+            event_type=event_type,
+            entity_id=entity_id,
+            material_state=material_state,
+        )
+
+        existing_doc = await database["notifications"].find_one({"fingerprint": fingerprint})
+        if existing_doc:
+            logger.info("Notification deduplicated by fingerprint=%s (%s)", fingerprint, title)
+            existing_doc.pop("_id", None)
+            return Notification(**existing_doc)
+
+        # 2. Recipient Resolution
+        raw_recipients = await self.resolve_recipients(
+            target_user_ids=target_user_ids,
+            target_roles=target_roles,
+            exclude_user_ids=exclude_user_ids,
+            db=database,
+        )
+
+        if not raw_recipients:
+            logger.warning("No eligible recipients found for event %s (%s)", event_type, title)
+            return None
+
+        # 3. Build Recipient Info & Evaluate Escalation Policy
+        recipient_infos: List[NotificationRecipientInfo] = []
+        whatsapp_tasks_to_run = []
+
+        whatsapp_text = self._format_whatsapp_message(
+            severity=severity,
+            title=title,
+            message=message,
+            category=category,
+            metadata=meta,
+        )
+
+        for rec in raw_recipients:
+            uid = rec["user_id"]
+            role = rec.get("role")
+            phone = rec.get("phone_number")
+
+            pref = await self.get_user_preferences(uid, db=database)
+            if pref.phone_number and not phone:
+                phone = pref.phone_number
+
+            # Evaluate In-App Channel
+            in_app_state = InAppDeliveryState(
+                status=NotificationDeliveryStatus.DELIVERED,
+                delivered_at=now,
+            )
+
+            # Evaluate WhatsApp Channel
+            whatsapp_state = WhatsAppDeliveryState()
+
+            # SIMULATION SAFETY RULE: Simulation notifications NEVER trigger WhatsApp
+            if is_simulation:
+                whatsapp_state.status = NotificationDeliveryStatus.SKIPPED
+            else:
+                # Severity Escalation Policy & Preferences
+                should_attempt_whatsapp = False
+
+                if severity == NotificationSeverity.CRITICAL:
+                    # Critical alerts escalate to all recipients with phone number or enabled preferences
+                    should_attempt_whatsapp = bool(phone and (pref.whatsapp_enabled or pref.notify_critical))
+                elif severity == NotificationSeverity.HIGH:
+                    should_attempt_whatsapp = bool(phone and pref.whatsapp_enabled and pref.notify_high)
+                elif severity == NotificationSeverity.MEDIUM:
+                    should_attempt_whatsapp = bool(phone and pref.whatsapp_enabled and pref.notify_operational)
+                else:  # LOW
+                    should_attempt_whatsapp = False
+
+                if should_attempt_whatsapp and phone:
+                    if self.provider.is_configured():
+                        whatsapp_state.status = NotificationDeliveryStatus.QUEUED
+                        whatsapp_state.queued_at = now
+                        whatsapp_tasks_to_run.append((uid, phone))
+                    else:
+                        whatsapp_state.status = NotificationDeliveryStatus.NOT_CONFIGURED
+                        whatsapp_state.error_code = "CREDENTIALS_MISSING"
+                        whatsapp_state.error_message = "WhatsApp provider credentials not configured in environment."
+                else:
+                    whatsapp_state.status = NotificationDeliveryStatus.SKIPPED
+
+            rec_info = NotificationRecipientInfo(
+                user_id=uid,
+                role=role,
+                phone_number=phone,
+                in_app=in_app_state,
+                whatsapp=whatsapp_state,
+            )
+            recipient_infos.append(rec_info)
+
+        # 4. Create Canonical Notification Record
+        notification_id = f"notif_{uuid.uuid4().hex[:14]}"
+        deep_link = None
+        if entity_type or entity_id or situation_id or coordination_plan_id or view_hint:
+            deep_link = NotificationDeepLink(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                situation_id=situation_id,
+                coordination_plan_id=coordination_plan_id,
+                view_hint=view_hint,
+            )
+
+        notification = Notification(
+            notification_id=notification_id,
+            event_id=event_id,
+            category=category,
+            event_type=event_type,
+            severity=severity,
+            title=title,
+            message=message,
+            deep_link=deep_link,
+            is_simulation=is_simulation,
+            fingerprint=fingerprint,
+            metadata=meta,
+            created_at=now,
+            recipients=recipient_infos,
+        )
+
+        # 5. Authoritative MongoDB Save
+        doc = notification.model_dump()
+        await database["notifications"].insert_one(doc)
+
+        # 6. Execute Queued WhatsApp Deliveries Asynchronously
+        for uid, phone in whatsapp_tasks_to_run:
+            try:
+                res = await self.provider.send_message(
+                    recipient_phone=phone,
+                    message=whatsapp_text,
+                )
+                now_wa = datetime.now(timezone.utc)
+                update_fields = {
+                    "recipients.$.whatsapp.status": res.status.value,
+                    "recipients.$.whatsapp.provider_message_id": res.provider_message_id,
+                    "recipients.$.whatsapp.error_code": res.error_code,
+                    "recipients.$.whatsapp.error_message": res.error_message,
+                }
+                if res.status == NotificationDeliveryStatus.SENT:
+                    update_fields["recipients.$.whatsapp.sent_at"] = now_wa
+                elif res.status == NotificationDeliveryStatus.FAILED:
+                    update_fields["recipients.$.whatsapp.failed_at"] = now_wa
+
+                await database["notifications"].update_one(
+                    {"notification_id": notification_id, "recipients.user_id": uid},
+                    {"$set": update_fields},
+                )
+
+                # Update in-memory object for caller return
+                for r in notification.recipients:
+                    if r.user_id == uid:
+                        r.whatsapp.status = res.status
+                        r.whatsapp.provider_message_id = res.provider_message_id
+                        r.whatsapp.error_code = res.error_code
+                        r.whatsapp.error_message = res.error_message
+                        if res.status == NotificationDeliveryStatus.SENT:
+                            r.whatsapp.sent_at = now_wa
+                        elif res.status == NotificationDeliveryStatus.FAILED:
+                            r.whatsapp.failed_at = now_wa
+
+            except Exception as ex:
+                logger.error("Error executing WhatsApp dispatch to %s: %s", phone, str(ex))
+
+        return notification
+
+    async def get_user_notifications(
+        self,
+        user_id: str,
+        category: Optional[NotificationCategory] = None,
+        severity: Optional[NotificationSeverity] = None,
+        unread_only: bool = False,
+        limit: int = 50,
+        skip: int = 0,
+        db: Optional[Any] = None,
+    ) -> List[NotificationUserView]:
+        """Fetch notifications scoped to the given user."""
+        database = self._get_db(db)
+        query: Dict[str, Any] = {"recipients.user_id": user_id}
+
+        if category:
+            query["category"] = category.value
+        if severity:
+            query["severity"] = severity.value
+
+        cursor = database["notifications"].find(query).sort("created_at", -1).skip(skip).limit(limit)
+        results: List[NotificationUserView] = []
+
+        async for doc in cursor:
+            # Extract user-scoped recipient slice
+            user_rec = next((r for r in doc.get("recipients", []) if r.get("user_id") == user_id), None)
+            if not user_rec:
+                continue
+
+            in_app = user_rec.get("in_app", {})
+            in_app_status = in_app.get("status", NotificationDeliveryStatus.DELIVERED.value)
+            read_at = in_app.get("read_at")
+
+            if unread_only and (in_app_status == NotificationDeliveryStatus.READ.value or read_at is not None):
+                continue
+
+            wa = user_rec.get("whatsapp", {})
+            wa_status = wa.get("status", NotificationDeliveryStatus.NOT_CONFIGURED.value)
+
+            deep_link_obj = None
+            if doc.get("deep_link"):
+                deep_link_obj = NotificationDeepLink(**doc["deep_link"])
+
+            results.append(
+                NotificationUserView(
+                    notification_id=doc["notification_id"],
+                    event_id=doc.get("event_id"),
+                    category=NotificationCategory(doc["category"]),
+                    event_type=doc.get("event_type", ""),
+                    severity=NotificationSeverity(doc.get("severity", "LOW")),
+                    title=doc.get("title", ""),
+                    message=doc.get("message", ""),
+                    deep_link=deep_link_obj,
+                    is_simulation=doc.get("is_simulation", False),
+                    metadata=doc.get("metadata", {}),
+                    created_at=doc.get("created_at"),
+                    in_app_status=NotificationDeliveryStatus(in_app_status),
+                    read_at=read_at,
+                    whatsapp_status=NotificationDeliveryStatus(wa_status),
+                )
+            )
+
+        return results
+
+    async def get_unread_count(self, user_id: str, db: Optional[Any] = None) -> int:
+        """Count unread in-app notifications for the given user."""
+        database = self._get_db(db)
+        count = await database["notifications"].count_documents({
+            "recipients": {
+                "$elemMatch": {
+                    "user_id": user_id,
+                    "in_app.status": {"$ne": NotificationDeliveryStatus.READ.value},
+                    "in_app.read_at": None,
+                }
+            }
+        })
+        return count
+
+    async def mark_as_read(
+        self, user_id: str, notification_id: str, db: Optional[Any] = None
+    ) -> bool:
+        """Mark a single notification as read for a specific user (IDOR safe)."""
+        database = self._get_db(db)
+        now = datetime.now(timezone.utc)
+        result = await database["notifications"].update_one(
+            {
+                "notification_id": notification_id,
+                "recipients.user_id": user_id,
+            },
+            {
+                "$set": {
+                    "recipients.$.in_app.status": NotificationDeliveryStatus.READ.value,
+                    "recipients.$.in_app.read_at": now,
+                }
+            },
+        )
+        return result.modified_count > 0
+
+    async def mark_all_as_read(self, user_id: str, db: Optional[Any] = None) -> int:
+        """Mark all unread notifications as read for a specific user."""
+        database = self._get_db(db)
+        now = datetime.now(timezone.utc)
+        # Update matching documents where user has unread state
+        result = await database["notifications"].update_many(
+            {
+                "recipients": {
+                    "$elemMatch": {
+                        "user_id": user_id,
+                        "in_app.status": {"$ne": NotificationDeliveryStatus.READ.value},
+                    }
+                }
+            },
+            {
+                "$set": {
+                    "recipients.$[elem].in_app.status": NotificationDeliveryStatus.READ.value,
+                    "recipients.$[elem].in_app.read_at": now,
+                }
+            },
+            array_filters=[{"elem.user_id": user_id}],
+        )
+        return result.modified_count
+
+    def get_channel_status(self) -> Dict[str, Any]:
+        """Check operational and configuration status of delivery channels."""
+        wa_configured = self.provider.is_configured()
+        return {
+            "in_app": {
+                "channel": NotificationChannel.IN_APP.value,
+                "status": "OPERATIONAL",
+                "configured": True,
+            },
+            "whatsapp": {
+                "channel": NotificationChannel.WHATSAPP.value,
+                "status": "OPERATIONAL" if wa_configured else "NOT_CONFIGURED",
+                "configured": wa_configured,
+                "provider": settings.WHATSAPP_PROVIDER,
+            },
+        }
+
+
+# Singleton
+_notification_service: Optional[NotificationService] = None
+
+
+def get_notification_service() -> NotificationService:
+    global _notification_service
+    if _notification_service is None:
+        _notification_service = NotificationService()
+    return _notification_service

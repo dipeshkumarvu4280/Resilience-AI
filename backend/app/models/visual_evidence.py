@@ -1,0 +1,324 @@
+import secrets
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
+
+
+class VisualHazardType(str, Enum):
+    FLOOD = "FLOOD"
+    FIRE = "FIRE"
+    LANDSLIDE = "LANDSLIDE"
+    STORM = "STORM"
+    CYCLONE = "CYCLONE"
+    EARTHQUAKE = "EARTHQUAKE"
+    ACCIDENT = "ACCIDENT"
+    INFRASTRUCTURE_FAILURE = "INFRASTRUCTURE_FAILURE"
+    MEDICAL_INCIDENT = "MEDICAL_INCIDENT"
+    BUILDING_COLLAPSE = "BUILDING_COLLAPSE"
+    STRUCTURAL_COLLAPSE = "STRUCTURAL_COLLAPSE"
+    NONE_OBSERVABLE = "NONE_OBSERVABLE"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+
+class TextImageConsistency(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    PARTIALLY_SUPPORTED = "PARTIALLY_SUPPORTED"
+    NOT_SUPPORTED = "NOT_SUPPORTED"
+    INCONCLUSIVE = "INCONCLUSIVE"
+
+
+class ClaimSupportStatus(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    NOT_OBSERVABLE = "NOT_OBSERVABLE"
+    CONTRADICTED = "CONTRADICTED"
+    UNCERTAIN = "UNCERTAIN"
+
+
+class VisualAnalysisStatus(str, Enum):
+    SUCCESS = "SUCCESS"
+    TEMPORARILY_UNAVAILABLE = "TEMPORARILY_UNAVAILABLE"
+    UNAVAILABLE = "UNAVAILABLE"
+    FAILED = "FAILED"
+    SAFETY_RESTRICTED = "SAFETY_RESTRICTED"
+    INVALID_RESPONSE = "INVALID_RESPONSE"
+
+
+class VisionProviderType(str, Enum):
+    GEMINI = "GEMINI"
+    OPENAI = "OPENAI"
+
+
+class VisionFailureCategory(str, Enum):
+    TRANSIENT_PROVIDER_ERROR = "TRANSIENT_PROVIDER_ERROR"
+    RATE_LIMITED = "RATE_LIMITED"
+    TIMEOUT = "TIMEOUT"
+    AUTHENTICATION_ERROR = "AUTHENTICATION_ERROR"
+    INVALID_REQUEST = "INVALID_REQUEST"
+    INVALID_RESPONSE = "INVALID_RESPONSE"
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    CONFIGURATION_ERROR = "CONFIGURATION_ERROR"
+    UNKNOWN_PROVIDER_ERROR = "UNKNOWN_PROVIDER_ERROR"
+
+
+class GeminiErrorClassification(str, Enum):
+    GEMINI_SUCCESS = "GEMINI_SUCCESS"
+    GEMINI_TEMPORARILY_UNAVAILABLE = "GEMINI_TEMPORARILY_UNAVAILABLE"
+    GEMINI_RATE_LIMITED = "GEMINI_RATE_LIMITED"
+    GEMINI_AUTH_ERROR = "GEMINI_AUTH_ERROR"
+    GEMINI_INVALID_REQUEST = "GEMINI_INVALID_REQUEST"
+    GEMINI_INVALID_IMAGE = "GEMINI_INVALID_IMAGE"
+    GEMINI_MALFORMED_RESPONSE = "GEMINI_MALFORMED_RESPONSE"
+    GEMINI_TIMEOUT = "GEMINI_TIMEOUT"
+    GEMINI_UNKNOWN_ERROR = "GEMINI_UNKNOWN_ERROR"
+
+
+def generate_visual_analysis_id() -> str:
+    alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+    suffix = "".join(secrets.choice(alphabet) for _ in range(8))
+    return f"VIS-{suffix}"
+
+
+class TextClaimEvaluation(BaseModel):
+    """
+    Evaluates an individual citizen claim against the visual evidence.
+    Distinguishes strictly between SUPPORTED, NOT_OBSERVABLE, CONTRADICTED, and UNCERTAIN.
+    """
+    claim_text: str = Field(..., description="The citizen claim or excerpt evaluated")
+    status: ClaimSupportStatus = Field(..., description="Visual support status")
+    visual_observation: str = Field(..., description="What is visually seen in the image regarding this claim")
+    confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+
+
+class VisualObservationItem(BaseModel):
+    """
+    Categorized factual observation extracted directly from observable image content.
+    """
+    category: str = Field(
+        ...,
+        description="Category: HUMAN_IMPACT, INFRASTRUCTURE_IMPACT, ENVIRONMENTAL_IMPACT, ACCESS_IMPACT, MEDICAL_IMPACT, OTHER"
+    )
+    observation: str = Field(..., description="Factual visual description of the feature")
+    severity_indicator: Optional[str] = Field(None, description="Observed severity hint: LOW, MEDIUM, HIGH, CRITICAL, UNKNOWN")
+    confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+
+
+class VulnerablePersonIndicator(BaseModel):
+    """
+    Observable indicators of vulnerable individuals.
+    Never fabricates counts if not visually discernible.
+    """
+    indicator_type: str = Field(..., description="ELDERLY, CHILDREN, INFANTS, DISABLED, PREGNANT, TRAPPED, UNKNOWN")
+    observable_count: Optional[int] = Field(None, description="Observable count if discernible")
+    observed_details: str = Field(default="", description="Details visually observable in frame")
+    visual_description: Optional[str] = Field(None, description="Visual description alias")
+    confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+
+
+class InfrastructureCondition(BaseModel):
+    """
+    Observable condition of physical infrastructure.
+    """
+    infrastructure_type: str = Field(..., description="ROAD, BRIDGE, BUILDING, POWER_LINE, WATER_INFRASTRUCTURE, OTHER")
+    condition: str = Field(..., description="SUBMERGED, BLOCKED, COLLAPSED, DAMAGED, NORMAL, UNCERTAIN")
+    is_access_blocked: bool = Field(default=False, description="Whether access or transit is visibly obstructed")
+    visual_description: Optional[str] = Field(None, description="Visual description of condition")
+    confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+
+
+
+class VisualEvidenceAnalysis(BaseModel):
+    """
+    Structured Multimodal Visual Evidence Analysis generated by Gemini Vision.
+    
+    CRITICAL ARCHITECTURAL CONSTRAINTS:
+    - Purely an Intelligence/Perception interpretation layer (Advisory Only).
+    - NEVER replaces or overwrites original immutable camera evidence or SHA-256 hash.
+    - NEVER directly mutates operational priority, dispatches resources, or overrides human officers.
+    - Preserves uncertainty: uses UNKNOWN / NOT_OBSERVABLE where visual data is ambiguous.
+    """
+    analysis_id: str = Field(default_factory=generate_visual_analysis_id)
+    source_type: str = Field(default="LIVE_CAMERA_EVIDENCE")
+    source_id: str = Field(..., description="Unique ID of source report or evidence")
+    report_id: Optional[str] = None
+    evidence_id: Optional[str] = None
+    content_hash: Optional[str] = Field(None, description="SHA-256 hash of original analyzed image")
+    analyzed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    model: str = Field(default="gemini-2.5-flash")
+    prompt_version: str = Field(default="1.0.0")
+    provider: str = Field(default="GEMINI", description="Provider used: GEMINI, OPENAI")
+    fallback_triggered: bool = Field(default=False, description="Whether fallback from primary provider was executed")
+    primary_provider_error: Optional[str] = Field(None, description="Primary provider error if fallback was executed")
+    fallback_provider: Optional[str] = Field(None, description="Name of fallback provider if used")
+    status: VisualAnalysisStatus = VisualAnalysisStatus.SUCCESS
+    
+    # Core Visual Findings
+    hazard_type: VisualHazardType = VisualHazardType.UNKNOWN
+    hazard_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    text_image_consistency: TextImageConsistency = TextImageConsistency.INCONCLUSIVE
+    
+    # Granular Evaluations
+    claim_evaluations: List[TextClaimEvaluation] = Field(default_factory=list)
+    visual_observations: List[VisualObservationItem] = Field(default_factory=list)
+    vulnerable_person_indicators: List[VulnerablePersonIndicator] = Field(default_factory=list)
+    infrastructure_conditions: List[InfrastructureCondition] = Field(default_factory=list)
+    
+    # Summary indicators
+    visible_impacts: List[str] = Field(default_factory=list)
+    affected_people_observable: bool = False
+    estimated_people_count: Optional[int] = None
+    medical_indicators: List[str] = Field(default_factory=list)
+    environmental_indicators: List[str] = Field(default_factory=list)
+    obstruction_indicators: List[str] = Field(default_factory=list)
+    uncertainties: List[str] = Field(default_factory=list)
+    
+    overall_confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+    warnings: List[str] = Field(default_factory=list)
+    is_cached: bool = False
+    evidence_available: bool = True
+    analysis_available: bool = False
+    retryable: bool = False
+    error_classification: Optional[str] = None
+    error_reason: Optional[str] = None
+    error_message: Optional[str] = None
+    retry_attempts_exhausted: Optional[int] = None
+
+    @classmethod
+    def temporarily_unavailable(
+        cls,
+        source_id: str,
+        reason: str,
+        report_id: Optional[str] = None,
+        evidence_id: Optional[str] = None,
+        content_hash: Optional[str] = None,
+        source_type: str = "LIVE_CAMERA_EVIDENCE",
+        error_classification: str = "GEMINI_TEMPORARILY_UNAVAILABLE",
+        retry_attempts_exhausted: Optional[int] = None,
+        model: str = "gemini-2.5-flash",
+        provider: str = "GEMINI",
+        fallback_triggered: bool = False,
+        primary_provider_error: Optional[str] = None,
+        fallback_provider: Optional[str] = None,
+    ) -> "VisualEvidenceAnalysis":
+        msg = "Visual analysis service is temporarily unavailable. Your camera evidence has been safely preserved. Please try again shortly."
+        return cls(
+            analysis_id=generate_visual_analysis_id(),
+            source_type=source_type,
+            source_id=source_id,
+            report_id=report_id,
+            evidence_id=evidence_id,
+            content_hash=content_hash,
+            analyzed_at=datetime.now(timezone.utc),
+            model=model,
+            prompt_version="1.0.0",
+            provider=provider,
+            fallback_triggered=fallback_triggered,
+            primary_provider_error=primary_provider_error,
+            fallback_provider=fallback_provider,
+            status=VisualAnalysisStatus.TEMPORARILY_UNAVAILABLE,
+            hazard_type=VisualHazardType.UNKNOWN,
+            hazard_confidence=0.0,
+            text_image_consistency=TextImageConsistency.INCONCLUSIVE,
+            overall_confidence=0.0,
+            evidence_available=True,
+            analysis_available=False,
+            retryable=True,
+            error_classification=error_classification,
+            error_reason=reason,
+            error_message=msg,
+            retry_attempts_exhausted=retry_attempts_exhausted,
+            warnings=[reason, msg],
+        )
+
+    @classmethod
+    def unavailable(
+        cls,
+        source_id: str,
+        reason: str,
+        report_id: Optional[str] = None,
+        evidence_id: Optional[str] = None,
+        content_hash: Optional[str] = None,
+        source_type: str = "LIVE_CAMERA_EVIDENCE",
+        error_classification: str = "GEMINI_TEMPORARILY_UNAVAILABLE",
+        retryable: bool = True,
+        model: str = "gemini-2.5-flash",
+        provider: str = "GEMINI",
+        fallback_triggered: bool = False,
+        primary_provider_error: Optional[str] = None,
+        fallback_provider: Optional[str] = None,
+    ) -> "VisualEvidenceAnalysis":
+        return cls(
+            analysis_id=generate_visual_analysis_id(),
+            source_type=source_type,
+            source_id=source_id,
+            report_id=report_id,
+            evidence_id=evidence_id,
+            content_hash=content_hash,
+            analyzed_at=datetime.now(timezone.utc),
+            model=model,
+            prompt_version="1.0.0",
+            provider=provider,
+            fallback_triggered=fallback_triggered,
+            primary_provider_error=primary_provider_error,
+            fallback_provider=fallback_provider,
+            status=VisualAnalysisStatus.UNAVAILABLE,
+            hazard_type=VisualHazardType.UNKNOWN,
+            hazard_confidence=0.0,
+            text_image_consistency=TextImageConsistency.INCONCLUSIVE,
+            overall_confidence=0.0,
+            evidence_available=True,
+            analysis_available=False,
+            retryable=retryable,
+            error_classification=error_classification,
+            error_reason=reason,
+            error_message=reason,
+            warnings=[reason],
+        )
+
+    @classmethod
+    def failed(
+        cls,
+        source_id: str,
+        error: str,
+        report_id: Optional[str] = None,
+        evidence_id: Optional[str] = None,
+        content_hash: Optional[str] = None,
+        source_type: str = "LIVE_CAMERA_EVIDENCE",
+        error_classification: str = "GEMINI_UNKNOWN_ERROR",
+        model: str = "gemini-2.5-flash",
+        provider: str = "GEMINI",
+        fallback_triggered: bool = False,
+        primary_provider_error: Optional[str] = None,
+        fallback_provider: Optional[str] = None,
+    ) -> "VisualEvidenceAnalysis":
+        return cls(
+            analysis_id=generate_visual_analysis_id(),
+            source_type=source_type,
+            source_id=source_id,
+            report_id=report_id,
+            evidence_id=evidence_id,
+            content_hash=content_hash,
+            analyzed_at=datetime.now(timezone.utc),
+            model=model,
+            prompt_version="1.0.0",
+            provider=provider,
+            fallback_triggered=fallback_triggered,
+            primary_provider_error=primary_provider_error,
+            fallback_provider=fallback_provider,
+            status=VisualAnalysisStatus.FAILED,
+            hazard_type=VisualHazardType.UNKNOWN,
+            hazard_confidence=0.0,
+            text_image_consistency=TextImageConsistency.INCONCLUSIVE,
+            overall_confidence=0.0,
+            evidence_available=True,
+            analysis_available=False,
+            retryable=False,
+            error_classification=error_classification,
+            error_reason=error,
+            error_message=error,
+            warnings=[f"Visual analysis execution failed: {error}"],
+        )
+
+

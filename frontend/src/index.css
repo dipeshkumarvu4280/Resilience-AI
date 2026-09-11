@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #EEF2F6;
+    --bg-card: #ffffff;
+    --bg-panel: #f8fafc;
+    --border-subtle: #cbd5e1;
+  }
+
+  body {
+    background-color: #EEF2F6;
+    color: #0f172a;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Light Elevated Card Styles */
+.light-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.light-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -6px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.04);
+}
+
+.emergency-btn-red {
+  background-color: #dc2626;
+  color: #ffffff;
+  transition: all 0.2s ease-in-out;
+}
+.emergency-btn-red:hover {
+  background-color: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+}
+
+@keyframes radarSweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulseSubtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+.animate-radar {
+  animation: radarSweep 8s linear infinite;
+}
+
+.animate-pulse-subtle {
+  animation: pulseSubtle 3s ease-in-out infinite;
+}
+
+/* Monospace telemetry text */
+.font-tactical-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  letter-spacing: 0.05em;
+}
+
+/* Custom Leaflet Map Styling */
+.leaflet-container {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  background-color: #f1f5f9;
+  z-index: 1;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #ffffff !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  line-height: 1.4 !important;
+}
+
+.leaflet-popup-tip-container {
+  overflow: visible !important;
+}
+
+.leaflet-popup-tip {
+  background: #ffffff !important;
+  box-shadow: none !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+}
+
+/* Responsive & Mobile Optimization Utilities */
+html {
+  box-sizing: border-box;
+  -webkit-text-size-adjust: 100%;
+}
+
+*, *:before, *:after {
+  box-sizing: inherit;
+}
+
+/* Hide scrollbars for horizontal tab rows while keeping scrolling functional */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe area insets for mobile notched devices */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Smooth touch scrolling */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent double-tap zoom on fast action buttons */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* Modal mobile backdrop scroll lock helper */
+body.modal-open {
+  overflow: hidden;
+  touch-action: none;
+}

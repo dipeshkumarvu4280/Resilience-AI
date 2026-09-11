@@ -1,0 +1,69 @@
+# # Logs
+# logs
+# *.log
+# npm-debug.log*
+# yarn-debug.log*
+# yarn-error.log*
+# pnpm-debug.log*
+# lerna-debug.log*
+
+# node_modules
+# dist
+# dist-ssr
+# *.local
+# .env
+# .env.local
+# .env.*.local
+# !.env.example
+
+# # Editor directories and files
+# .vscode/*
+# !.vscode/extensions.json
+# .idea
+# .DS_Store
+# *.suo
+# *.ntvs*
+# *.njsproj
+# *.sln
+# *.sw?
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Secrets / credentials
+*.pem
+*.key
+vapid_keys.json
+**/vapid_keys.json
+
+# Runtime uploads / user evidence
+backend/uploads/
+uploads/
+
+# Logs / local DB
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# IDE
+.vscode/
+.idea/
+
+# Archives
+*.zip
