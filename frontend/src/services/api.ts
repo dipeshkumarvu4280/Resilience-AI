@@ -61,8 +61,26 @@ import type {
 } from '../types';
 
 
+export const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && envUrl.startsWith('http')) {
+    return envUrl.replace(/\/+$/, '');
+  }
+
+  // Detect non-localhost production environments (e.g. Vercel deployment)
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+    if (!isLocalhost || import.meta.env.PROD) {
+      return 'https://resilience-ai-s2i3.onrender.com/api/v1';
+    }
+  }
+
+  return envUrl ? envUrl.replace(/\/+$/, '') : '/api/v1';
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+  baseURL: getApiBaseUrl(),
   timeout: 30000,
 });
 

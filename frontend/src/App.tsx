@@ -190,6 +190,11 @@ export const App: React.FC = () => {
             }
           />
 
+          {/* Operational Route Aliases */}
+          <Route path="/dashboard" element={<Navigate to="/command-center" replace />} />
+          <Route path="/officer" element={<Navigate to="/command-center" replace />} />
+          <Route path="/officer/dashboard" element={<Navigate to="/command-center" replace />} />
+
           {/* Catch-all redirect */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

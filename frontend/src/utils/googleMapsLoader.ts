@@ -3,7 +3,7 @@ import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 let loadPromise: Promise<typeof google> | null = null;
 
 export const getGoogleMapsApiKey = (): string => {
-  return import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  return import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyBRjMb3WnJHWSmPS6aV3H9KqiL--AWrviY';
 };
 
 export const hasGoogleMapsApiKey = (): boolean => {
