@@ -43,39 +43,88 @@ async def close_mongo_connection():
         logger.info("MongoDB connection closed.")
 
 
+async def safe_create_indexes_for_collection(col, index_models: list[IndexModel]):
+    """
+    Safely and idempotently creates or reconciles indexes on a MongoDB collection.
+    - If index already exists with matching specifications, create_indexes is a no-op.
+    - If an index with the same name or key spec exists with conflicting options (e.g. stale
+      partialFilterExpression from earlier code version), catches IndexKeySpecsConflict /
+      IndexOptionsConflict, drops ONLY the conflicting stale index, and recreates it with
+      the current target specification.
+    - Zero document modification or deletion.
+    """
+    for index_model in index_models:
+        idx_name = index_model.document.get("name")
+        try:
+            await col.create_indexes([index_model])
+        except Exception as e:
+            err_msg = str(e)
+            if (
+                "IndexKeySpecsConflict" in err_msg
+                or "IndexOptionsConflict" in err_msg
+                or "already exists with different options" in err_msg
+                or "conflicting" in err_msg.lower()
+                or "code 85" in err_msg
+                or "code 86" in err_msg
+            ):
+                logger.warning(
+                    f"Index spec conflict detected for index '{idx_name}' on collection '{col.name}': {e}. "
+                    f"Reconciling: safely dropping stale index and recreating with current target definition."
+                )
+                try:
+                    existing_info = await col.index_information()
+                    # Drop by name if it matches
+                    if idx_name and idx_name in existing_info:
+                        await col.drop_index(idx_name)
+                        logger.info(f"Dropped stale index '{idx_name}' from '{col.name}'.")
+                    else:
+                        # Drop by key spec match
+                        target_key = index_model.document.get("key")
+                        target_key_list = list(target_key.items()) if hasattr(target_key, "items") else list(target_key)
+                        for existing_name, info in existing_info.items():
+                            if existing_name == "_id_":
+                                continue
+                            if info.get("key") == target_key_list:
+                                await col.drop_index(existing_name)
+                                logger.info(f"Dropped conflicting index '{existing_name}' from '{col.name}'.")
+                    # Recreate with clean target specification
+                    await col.create_indexes([index_model])
+                    logger.info(f"Successfully reconciled and recreated index '{idx_name}' on '{col.name}'.")
+                except Exception as reconcile_err:
+                    logger.error(f"Failed to reconcile index '{idx_name}' on '{col.name}': {reconcile_err}")
+            else:
+                logger.warning(f"Warning creating index '{idx_name}' on '{col.name}': {e}")
+
+
 async def init_db_indexes():
     if db_manager.db is None:
         return
     try:
-        users_col = db_manager.db["users"]
-        await users_col.create_indexes([
+        # Phase 0: Authentication & Core Users
+        await safe_create_indexes_for_collection(db_manager.db["users"], [
             IndexModel([("phone", ASCENDING)], unique=True, name="idx_users_phone_unique"),
             IndexModel([("email", ASCENDING)], sparse=True, name="idx_users_email"),
             IndexModel([("google_sub", ASCENDING)], sparse=True, name="idx_users_google_sub"),
             IndexModel([("role", ASCENDING)], name="idx_users_role"),
         ])
         
-        otps_col = db_manager.db["otps"]
-        await otps_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["otps"], [
             IndexModel([("phone", ASCENDING)], name="idx_otps_phone"),
             IndexModel([("expires_at", ASCENDING)], expireAfterSeconds=0, name="idx_otps_ttl"),
         ])
 
-        audit_col = db_manager.db["auth_audit_logs"]
-        await audit_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["auth_audit_logs"], [
             IndexModel([("phone", ASCENDING)], name="idx_audit_phone"),
             IndexModel([("timestamp", ASCENDING)], name="idx_audit_timestamp"),
         ])
 
         # Phase 1: Citizen Emergency Reporting Indexes
-        citizen_identities_col = db_manager.db["citizen_identities"]
-        await citizen_identities_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["citizen_identities"], [
             IndexModel([("phone", ASCENDING)], unique=True, name="idx_citizen_phone_unique"),
             IndexModel([("citizen_id", ASCENDING)], unique=True, name="idx_citizen_id_unique"),
         ])
 
-        citizen_reports_col = db_manager.db["citizen_reports"]
-        await citizen_reports_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["citizen_reports"], [
             IndexModel([("report_id", ASCENDING)], unique=True, name="idx_reports_id_unique"),
             IndexModel([("citizen_phone", ASCENDING)], name="idx_reports_phone"),
             IndexModel([("status", ASCENDING)], name="idx_reports_status"),
@@ -83,15 +132,13 @@ async def init_db_indexes():
             IndexModel([("created_at", ASCENDING)], name="idx_reports_created_at"),
         ])
 
-        citizen_otps_col = db_manager.db["citizen_otps"]
-        await citizen_otps_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["citizen_otps"], [
             IndexModel([("phone", ASCENDING)], name="idx_citizen_otps_phone"),
             IndexModel([("expires_at", ASCENDING)], expireAfterSeconds=0, name="idx_citizen_otps_ttl"),
         ])
 
         # Phase 3: Emergency Resource Coordination Indexes
-        resources_col = db_manager.db["resources"]
-        await resources_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["resources"], [
             IndexModel([("resource_id", ASCENDING)], unique=True, name="idx_resources_id_unique"),
             IndexModel([("resource_type", ASCENDING)], name="idx_resources_type"),
             IndexModel([("status", ASCENDING)], name="idx_resources_status"),
@@ -100,14 +147,12 @@ async def init_db_indexes():
             IndexModel([("created_at", ASCENDING)], name="idx_resources_created_at"),
         ])
 
-        needs_col = db_manager.db["needs_assessments"]
-        await needs_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["needs_assessments"], [
             IndexModel([("report_id", ASCENDING)], unique=True, name="idx_needs_report_unique"),
             IndexModel([("assessed_at", ASCENDING)], name="idx_needs_assessed_at"),
         ])
 
-        alloc_col = db_manager.db["resource_allocations"]
-        await alloc_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["resource_allocations"], [
             IndexModel([("allocation_id", ASCENDING)], unique=True, name="idx_alloc_id_unique"),
             IndexModel([("report_id", ASCENDING)], name="idx_alloc_report_id"),
             IndexModel([("resource_id", ASCENDING)], name="idx_alloc_resource_id"),
@@ -116,8 +161,7 @@ async def init_db_indexes():
         ])
 
         # Phase 4: Situation Intelligence & Clustering Indexes
-        situations_col = db_manager.db["situations"]
-        await situations_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["situations"], [
             IndexModel([("situation_id", ASCENDING)], unique=True, name="idx_situations_id_unique"),
             IndexModel([("cluster_id", ASCENDING)], name="idx_situations_cluster_id"),
             IndexModel([("primary_report_id", ASCENDING)], name="idx_situations_primary_report"),
@@ -130,8 +174,7 @@ async def init_db_indexes():
         ])
 
         # Phase 5: Multi-Agent Coordination & Central Orchestrator Indexes
-        coord_col = db_manager.db["coordination_plans"]
-        await coord_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["coordination_plans"], [
             IndexModel([("plan_id", ASCENDING)], unique=True, name="idx_coordination_plans_id_unique"),
             IndexModel([("situation_id", ASCENDING)], name="idx_coordination_plans_situation"),
             IndexModel([("status", ASCENDING)], name="idx_coordination_plans_status"),
@@ -144,8 +187,7 @@ async def init_db_indexes():
             ),
         ])
 
-        agent_runs_col = db_manager.db["ai_agent_runs"]
-        await agent_runs_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["ai_agent_runs"], [
             IndexModel([("run_id", ASCENDING)], unique=True, name="idx_agent_runs_id_unique"),
             IndexModel([("situation_id", ASCENDING)], name="idx_agent_runs_situation"),
             IndexModel([("agent_name", ASCENDING)], name="idx_agent_runs_name"),
@@ -154,8 +196,7 @@ async def init_db_indexes():
         ])
 
         # Phase 6: Live Monitoring & Change Impact Analysis Indexes
-        monitoring_events_col = db_manager.db["monitoring_events"]
-        await monitoring_events_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["monitoring_events"], [
             IndexModel([("event_id", ASCENDING)], unique=True, name="idx_monitoring_events_id_unique"),
             IndexModel([("event_fingerprint", ASCENDING)], name="idx_monitoring_events_fingerprint"),
             IndexModel([("situation_id", ASCENDING)], name="idx_monitoring_events_situation"),
@@ -167,8 +208,7 @@ async def init_db_indexes():
             IndexModel([("detected_at", ASCENDING)], name="idx_monitoring_events_detected_at"),
         ])
 
-        change_impacts_col = db_manager.db["change_impacts"]
-        await change_impacts_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["change_impacts"], [
             IndexModel([("impact_id", ASCENDING)], unique=True, name="idx_change_impacts_id_unique"),
             IndexModel([("event_id", ASCENDING)], name="idx_change_impacts_event"),
             IndexModel([("situation_id", ASCENDING)], name="idx_change_impacts_situation"),
@@ -179,8 +219,7 @@ async def init_db_indexes():
         ])
 
         # Phase 7: Event-Driven Notification & Preferences Indexes
-        notifications_col = db_manager.db["notifications"]
-        await notifications_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["notifications"], [
             IndexModel([("notification_id", ASCENDING)], unique=True, name="idx_notif_id_unique"),
             IndexModel([("fingerprint", ASCENDING)], unique=True, name="idx_notif_fingerprint_unique"),
             IndexModel([("recipients.user_id", ASCENDING)], name="idx_notif_recipient_user"),
@@ -189,15 +228,36 @@ async def init_db_indexes():
             IndexModel([("category", ASCENDING)], name="idx_notif_category"),
         ])
 
-        notif_prefs_col = db_manager.db["notification_preferences"]
-        await notif_prefs_col.create_indexes([
+        await safe_create_indexes_for_collection(db_manager.db["notification_preferences"], [
             IndexModel([("user_id", ASCENDING)], unique=True, name="idx_notif_prefs_user_unique"),
             IndexModel([("preference_id", ASCENDING)], unique=True, name="idx_notif_prefs_id_unique"),
         ])
 
+        # Phase 8: Field Operations & Incident Closure Indexes
+        await safe_create_indexes_for_collection(db_manager.db["response_tasks"], [
+            IndexModel([("task_id", ASCENDING)], unique=True, name="idx_tasks_id_unique"),
+            IndexModel([("situation_id", ASCENDING)], name="idx_tasks_situation"),
+            IndexModel([("coordination_plan_id", ASCENDING)], name="idx_tasks_plan"),
+            IndexModel([("status", ASCENDING)], name="idx_tasks_status"),
+            IndexModel([("assigned_unit.unit_id", ASCENDING)], name="idx_tasks_assigned_unit"),
+            IndexModel([("created_at", ASCENDING)], name="idx_tasks_created_at"),
+        ])
+
+        await safe_create_indexes_for_collection(db_manager.db["field_update_records"], [
+            IndexModel([("update_id", ASCENDING)], unique=True, name="idx_field_updates_id_unique"),
+            IndexModel([("task_id", ASCENDING)], name="idx_field_updates_task"),
+            IndexModel([("reported_at", ASCENDING)], name="idx_field_updates_reported_at"),
+        ])
+
+        await safe_create_indexes_for_collection(db_manager.db["timeline_events"], [
+            IndexModel([("event_id", ASCENDING)], unique=True, name="idx_timeline_event_id_unique"),
+            IndexModel([("situation_id", ASCENDING)], name="idx_timeline_situation"),
+            IndexModel([("timestamp", ASCENDING)], name="idx_timeline_timestamp"),
+        ])
+
         logger.info("MongoDB indexes verified successfully.")
     except Exception as e:
-        logger.error(f"Error creating database indexes: {e}")
+        logger.error(f"Error initializing database indexes: {e}")
 
 
 
