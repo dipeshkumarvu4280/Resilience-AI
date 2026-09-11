@@ -1,5 +1,6 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,12 +32,90 @@ class Settings(BaseSettings):
     GEOCODING_TIMEOUT_SECONDS: float = 5.0
     
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = [
+    BACKEND_CORS_ORIGINS: Union[List[str], str] = [
+        "https://resilience-ai-pied.vercel.app",
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ]
+    CORS_ALLOWED_ORIGINS: Optional[Union[List[str], str]] = None
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str], None]) -> List[str]:
+        if not v:
+            return [
+                "https://resilience-ai-pied.vercel.app",
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:3000",
+            ]
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            if v_stripped.startswith("[") and v_stripped.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(v_stripped)
+                    if isinstance(parsed, list):
+                        return [str(item).strip().rstrip("/") for item in parsed if item]
+                except Exception:
+                    pass
+            return [item.strip().rstrip("/") for item in v.split(",") if item.strip()]
+        if isinstance(v, list):
+            return [str(item).strip().rstrip("/") for item in v if item]
+        return v
+
+    @property
+    def cors_origins(self) -> List[str]:
+        origins: List[str] = []
+        if isinstance(self.BACKEND_CORS_ORIGINS, list):
+            for orig in self.BACKEND_CORS_ORIGINS:
+                clean = str(orig).strip().rstrip("/")
+                if clean and clean not in origins:
+                    origins.append(clean)
+        elif isinstance(self.BACKEND_CORS_ORIGINS, str):
+            for orig in self.BACKEND_CORS_ORIGINS.split(","):
+                clean = orig.strip().rstrip("/")
+                if clean and clean not in origins:
+                    origins.append(clean)
+        
+        if self.CORS_ALLOWED_ORIGINS:
+            if isinstance(self.CORS_ALLOWED_ORIGINS, list):
+                for orig in self.CORS_ALLOWED_ORIGINS:
+                    clean = str(orig).strip().rstrip("/")
+                    if clean and clean not in origins:
+                        origins.append(clean)
+            elif isinstance(self.CORS_ALLOWED_ORIGINS, str):
+                s = self.CORS_ALLOWED_ORIGINS.strip()
+                if s.startswith("[") and s.endswith("]"):
+                    import json
+                    try:
+                        parsed = json.loads(s)
+                        if isinstance(parsed, list):
+                            for orig in parsed:
+                                clean = str(orig).strip().rstrip("/")
+                                if clean and clean not in origins:
+                                    origins.append(clean)
+                    except Exception:
+                        pass
+                for orig in self.CORS_ALLOWED_ORIGINS.split(","):
+                    clean = orig.strip().rstrip("/")
+                    if clean and clean not in origins:
+                        origins.append(clean)
+        
+        default_origins = [
+            "https://resilience-ai-pied.vercel.app",
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000",
+        ]
+        for default_orig in default_origins:
+            if default_orig not in origins:
+                origins.append(default_orig)
+        return origins
     
     # Google OAuth 2.0 / OpenID Connect
     GOOGLE_CLIENT_ID: str = ""
