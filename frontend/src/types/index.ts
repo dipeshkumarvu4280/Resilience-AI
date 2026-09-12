@@ -37,6 +37,26 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface OTPRequestResponse {
+  message: string;
+  phone: string;
+  expires_in_seconds: number;
+  simulated_mode?: boolean;
+  demo_otp?: string | null;
+  cooldown_seconds?: number;
+}
+
+export interface OTPVerifyResponse {
+  message: string;
+  phone: string;
+  reset_token: string;
+  expires_in_seconds: number;
+}
+
+export interface PasswordResetResponse {
+  message: string;
+}
+
 export type ServiceStatus = 'Operational' | 'Degraded' | 'Outage' | 'Not Enabled';
 
 export interface ServiceInfo {

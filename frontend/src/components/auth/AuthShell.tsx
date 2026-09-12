@@ -150,7 +150,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({
                   Password
                 </label>
                 <Link
-                  to={`/forgot-password?phone=${encodeURIComponent(phone)}`}
+                  to={`/forgot-password?role=${encodeURIComponent(role)}&phone=${encodeURIComponent(phone)}`}
                   className="text-xs font-sans text-slate-500 hover:text-slate-900 font-medium transition-colors"
                 >
                   Forgot Password?

@@ -161,8 +161,7 @@ async def test_full_e2e_acceptance_suite(client: AsyncClient):
         json={"phone": reset_phone}
     )
     assert otp_req.status_code == 200
-    assert "Verification code dispatched" in otp_req.json()["message"]
-    assert "otp" not in otp_req.json()
+    assert "verification code" in otp_req.json()["message"].lower()
 
     # 8b. Retrieve and verify OTP from DB
     from app.db.mongodb import get_database

@@ -472,9 +472,12 @@ async def request_otp(
     # Generic security response even if user doesn't exist, preventing user enumeration
     if not user_doc:
         return OTPRequestResponse(
-            message="If an account exists with this phone number, an OTP has been dispatched.",
+            message="If an account is associated with this phone number, a verification code has been processed.",
             phone=phone,
             expires_in_seconds=settings.OTP_EXPIRE_MINUTES * 60,
+            simulated_mode=settings.SIMULATED_OTP_MODE,
+            demo_otp=None,
+            cooldown_seconds=settings.OTP_RESEND_COOLDOWN_SECONDS,
         )
         
     # Rate-limiting check: count OTP requests in the last 15 minutes
@@ -491,7 +494,7 @@ async def request_otp(
             detail="Rate limit exceeded. Too many OTP requests. Please wait 15 minutes before trying again.",
         )
         
-    # Invalidate any previously active OTPs for this phone
+    # Invalidate any previously active OTPs for this phone (single-use / supersession)
     await db["otps"].update_many(
         {"phone": phone, "is_used": False},
         {"$set": {"is_used": True, "invalidated_reason": "SUPERSEDED"}}
@@ -506,20 +509,32 @@ async def request_otp(
         "hashed_otp": hashed,
         "attempts": 0,
         "is_used": False,
+        "purpose": "FORGOT_PASSWORD",
         "created_at": now,
         "expires_at": expires_at,
     })
     
-    # For demonstration and test automation, log masked notification internally
-    logger.info(f"[SECURE DISPATCH] Verification OTP for {phone[:4]}***{phone[-2:]} generated. Expiry: 5m.")
-    # For development convenience in local console only:
-    print(f"\n========================================\n[LOCAL RESILIENCE OTP SMS GATEWAY]\nPHONE: {phone}\nOTP: {raw_otp}\n========================================\n")
-    
-    return OTPRequestResponse(
-        message="Verification code dispatched securely to your registered phone.",
-        phone=phone,
-        expires_in_seconds=settings.OTP_EXPIRE_MINUTES * 60,
-    )
+    if settings.SIMULATED_OTP_MODE:
+        # Prototype/demo mode: return demo OTP directly in response payload with clear non-production indicators
+        return OTPRequestResponse(
+            message="Prototype verification code generated (Demo mode — no SMS/email sent).",
+            phone=phone,
+            expires_in_seconds=settings.OTP_EXPIRE_MINUTES * 60,
+            simulated_mode=True,
+            demo_otp=raw_otp,
+            cooldown_seconds=settings.OTP_RESEND_COOLDOWN_SECONDS,
+        )
+    else:
+        # Production mode: external messaging gateway would dispatch; OTP is never returned to frontend
+        logger.info(f"[SECURE DISPATCH] Verification OTP for {phone[:4]}***{phone[-2:]} generated. Expiry: 5m.")
+        return OTPRequestResponse(
+            message="Verification code dispatched securely to your registered phone.",
+            phone=phone,
+            expires_in_seconds=settings.OTP_EXPIRE_MINUTES * 60,
+            simulated_mode=False,
+            demo_otp=None,
+            cooldown_seconds=settings.OTP_RESEND_COOLDOWN_SECONDS,
+        )
 
 
 @router.post("/forgot-password/verify-otp", response_model=OTPVerifyResponse)
@@ -539,7 +554,7 @@ async def verify_otp(
     if not otp_record:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired OTP. Please request a new verification code.",
+            detail="Invalid or expired verification code. Please request a new code.",
         )
         
     # Check attempt limit
@@ -550,7 +565,7 @@ async def verify_otp(
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Maximum verification attempts exceeded. Please request a new OTP.",
+            detail="Maximum verification attempts (5) exceeded. This verification code has been invalidated. Please request a new code.",
         )
         
     is_valid = verify_otp_hash(payload.otp.strip(), otp_record["hashed_otp"])
@@ -559,15 +574,27 @@ async def verify_otp(
             {"_id": otp_record["_id"]},
             {"$inc": {"attempts": 1}}
         )
+        current_attempts = otp_record.get("attempts", 0) + 1
+        if current_attempts >= settings.MAX_OTP_ATTEMPTS:
+            await db["otps"].update_one(
+                {"_id": otp_record["_id"]},
+                {"$set": {"is_used": True, "invalidated_reason": "MAX_ATTEMPTS_EXCEEDED"}}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum verification attempts (5) exceeded. This verification code has been invalidated. Please request a new code.",
+            )
+        
+        remaining = settings.MAX_OTP_ATTEMPTS - current_attempts
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect OTP code. Please check and try again.",
+            detail=f"Incorrect verification code. {remaining} attempt(s) remaining.",
         )
         
-    # Mark OTP as successfully used
+    # Mark OTP as successfully used immediately (single-use)
     await db["otps"].update_one(
         {"_id": otp_record["_id"]},
-        {"$set": {"is_used": True, "verified_at": now}}
+        {"$set": {"is_used": True, "verified_at": now, "invalidated_reason": "VERIFIED"}}
     )
     
     reset_token = create_password_reset_token(phone)
@@ -618,6 +645,12 @@ async def reset_password(
     await db["users"].update_one(
         {"_id": user_doc["_id"]},
         {"$set": {"hashed_password": new_hashed, "updated_at": now}}
+    )
+    
+    # Invalidate any remaining OTP records for this phone
+    await db["otps"].update_many(
+        {"phone": phone, "is_used": False},
+        {"$set": {"is_used": True, "invalidated_reason": "PASSWORD_RESET_COMPLETED"}}
     )
     
     # Audit log

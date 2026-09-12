@@ -21,9 +21,12 @@ class OTPRequest(BaseModel):
 
 
 class OTPRequestResponse(BaseModel):
-    message: str = "Verification code generated and dispatched securely"
+    message: str = "Verification code generated"
     phone: str
     expires_in_seconds: int = 300
+    simulated_mode: bool = False
+    demo_otp: Optional[str] = None
+    cooldown_seconds: int = 30
 
 
 class OTPVerifyRequest(BaseModel):

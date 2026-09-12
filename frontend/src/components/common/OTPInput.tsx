@@ -8,6 +8,7 @@ interface OTPInputProps {
   disabled?: boolean;
   onResend?: () => void;
   expiresInSeconds?: number;
+  cooldownSeconds?: number;
 }
 
 export const OTPInput: React.FC<OTPInputProps> = ({
@@ -18,13 +19,24 @@ export const OTPInput: React.FC<OTPInputProps> = ({
   disabled = false,
   onResend,
   expiresInSeconds = 300,
+  cooldownSeconds = 30,
 }) => {
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
   const [timeLeft, setTimeLeft] = useState(expiresInSeconds);
+  const [cooldownLeft, setCooldownLeft] = useState(cooldownSeconds);
 
   useEffect(() => {
     setTimeLeft(expiresInSeconds);
   }, [expiresInSeconds]);
+
+  useEffect(() => {
+    setCooldownLeft(cooldownSeconds);
+  }, [cooldownSeconds]);
+
+  useEffect(() => {
+    // Focus first input on mount
+    inputsRef.current[0]?.focus();
+  }, []);
 
   useEffect(() => {
     if (timeLeft <= 0) return;
@@ -33,6 +45,14 @@ export const OTPInput: React.FC<OTPInputProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, [timeLeft]);
+
+  useEffect(() => {
+    if (cooldownLeft <= 0) return;
+    const cooldownTimer = setInterval(() => {
+      setCooldownLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(cooldownTimer);
+  }, [cooldownLeft]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -89,6 +109,13 @@ export const OTPInput: React.FC<OTPInputProps> = ({
     }
   };
 
+  const handleTriggerResend = () => {
+    if (cooldownLeft > 0 || disabled || !onResend) return;
+    setCooldownLeft(cooldownSeconds);
+    setTimeLeft(expiresInSeconds);
+    onResend();
+  };
+
   return (
     <div className="flex flex-col items-center">
       <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3">
@@ -100,12 +127,14 @@ export const OTPInput: React.FC<OTPInputProps> = ({
             }}
             type="text"
             inputMode="numeric"
+            autoComplete={idx === 0 ? 'one-time-code' : 'off'}
             maxLength={1}
             value={value[idx] || ''}
             onChange={(e) => handleChange(e, idx)}
             onKeyDown={(e) => handleKeyDown(e, idx)}
             onPaste={handlePaste}
             disabled={disabled}
+            aria-label={`Digit ${idx + 1} of verification code`}
             className={`w-11 h-12 sm:w-12 sm:h-14 text-center font-mono text-xl font-extrabold text-slate-900 rounded-xl border transition-all ${
               value[idx]
                 ? 'border-red-500 bg-red-50/40 shadow-2xs'
@@ -128,17 +157,22 @@ export const OTPInput: React.FC<OTPInputProps> = ({
         </div>
 
         {onResend && (
-          <button
-            type="button"
-            onClick={() => {
-              setTimeLeft(expiresInSeconds);
-              onResend();
-            }}
-            disabled={disabled || timeLeft > 240}
-            className="text-slate-700 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed underline font-semibold"
-          >
-            Resend Code
-          </button>
+          <div>
+            {cooldownLeft > 0 ? (
+              <span className="text-slate-400 font-mono font-medium text-[11px]">
+                Resend in {cooldownLeft}s
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleTriggerResend}
+                disabled={disabled}
+                className="text-slate-700 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed underline font-semibold cursor-pointer"
+              >
+                Resend code
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

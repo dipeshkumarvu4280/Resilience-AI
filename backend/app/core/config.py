@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     OTP_EXPIRE_MINUTES: int = 5
     MAX_OTP_ATTEMPTS: int = 5
+    OTP_RESEND_COOLDOWN_SECONDS: int = 30
+    
+    # Prototype / Demo Verification Mode
+    # WARNING: Simulated OTP is strictly for prototype/demo environments.
+    # When enabled, no real SMS/Email/WhatsApp dispatch occurs; OTP is surfaced directly in the prototype response.
+    # NEVER enable SIMULATED_OTP_MODE in production without explicit authorized requirement.
+    SIMULATED_OTP_MODE: bool = True
     
     # Database
     MONGODB_URL: str = "mongodb://localhost:27017"
