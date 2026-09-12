@@ -39,8 +39,19 @@ export const AuthShell: React.FC<AuthShellProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone || !password) {
-      setError('Please provide phone number and password');
+    const cleanPhone = phone.replace(/\D/g, '').trim();
+    if (!cleanPhone) {
+      setError('Please enter your registered 10-digit mobile number.');
+      return;
+    }
+
+    if (cleanPhone.length !== 10) {
+      setError('Mobile number must be exactly 10 digits.');
+      return;
+    }
+
+    if (!password) {
+      setError('Please provide your password.');
       return;
     }
 
@@ -48,7 +59,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({
     setError(null);
 
     try {
-      const user = await login(phone, password, role);
+      const user = await login(cleanPhone, password, role);
       const target = getDashboardRouteForRole(user.role);
       navigate(target);
     } catch (err: any) {
@@ -126,18 +137,27 @@ export const AuthShell: React.FC<AuthShellProps> = ({
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-slate-700 mb-1.5 font-bold">
-                Phone Number
+              <label className="block text-xs font-mono uppercase tracking-wider text-slate-700 mb-1 font-bold">
+                Mobile Number
               </label>
+              <p className="text-[11px] text-slate-500 mb-1.5 font-sans">
+                Enter your registered 10-digit mobile number.
+              </p>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <Phone className="w-4 h-4" />
                 </div>
                 <input
                   type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  maxLength={10}
                   required
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setPhone(val);
+                  }}
                   placeholder="e.g. 9999999002"
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition-all font-mono"
                 />

@@ -75,9 +75,14 @@ export const ForgotPasswordPage: React.FC = () => {
 
   const handleRequestOtp = async (isResend = false, e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const cleanPhone = phone.trim();
-    if (!cleanPhone || cleanPhone.length < 10) {
-      setError('Please provide a valid registered phone number (minimum 10 digits)');
+    const cleanPhone = phone.replace(/\D/g, '').trim();
+    if (!cleanPhone) {
+      setError('Please enter your registered 10-digit mobile number.');
+      return;
+    }
+
+    if (cleanPhone.length !== 10) {
+      setError('Mobile number must be exactly 10 digits.');
       return;
     }
 
@@ -223,7 +228,7 @@ export const ForgotPasswordPage: React.FC = () => {
               Password Recovery
             </h1>
             <p className="text-xs text-slate-500 mt-1">
-              {step === 'PHONE' && 'Enter your registered phone number to receive a verification code.'}
+              {step === 'PHONE' && 'Enter your registered 10-digit mobile number to receive a verification code.'}
               {step === 'OTP' && 'Verify your identity using the prototype verification code.'}
               {step === 'PASSWORD' && 'Establish a new secure password for your operational account.'}
               {step === 'SUCCESS' && 'Your credentials have been successfully updated.'}
@@ -233,7 +238,7 @@ export const ForgotPasswordPage: React.FC = () => {
           {/* Stepper Progress */}
           <div className="flex items-center justify-between mb-6 px-2">
             {[
-              { id: 'PHONE', label: '1. PHONE' },
+              { id: 'PHONE', label: '1. MOBILE NUMBER' },
               { id: 'OTP', label: '2. VERIFY' },
               { id: 'PASSWORD', label: '3. RESET' },
             ].map((s, idx) => {
@@ -282,18 +287,27 @@ export const ForgotPasswordPage: React.FC = () => {
           {step === 'PHONE' && (
             <form onSubmit={(e) => handleRequestOtp(false, e)} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase tracking-wider text-slate-700 mb-1.5 font-bold">
-                  Registered Phone Number
+                <label className="block text-xs font-mono uppercase tracking-wider text-slate-700 mb-1 font-bold">
+                  Mobile Number
                 </label>
+                <p className="text-[11px] text-slate-500 mb-1.5 font-sans">
+                  Enter your registered 10-digit mobile number.
+                </p>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                     <Phone className="w-4 h-4" />
                   </div>
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={10}
                     required
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setPhone(val);
+                    }}
                     placeholder="e.g. 9999999002"
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white font-mono"
                   />

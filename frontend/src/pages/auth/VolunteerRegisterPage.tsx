@@ -53,6 +53,12 @@ export const VolunteerRegisterPage: React.FC = () => {
     e.preventDefault();
     setError(null);
 
+    const cleanPhone = phone.replace(/\D/g, '').trim();
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Password and Confirmation Password do not match');
       return;
@@ -73,7 +79,7 @@ export const VolunteerRegisterPage: React.FC = () => {
     try {
       const user = await registerVolunteer({
         full_name: fullName,
-        phone,
+        phone: cleanPhone,
         password,
         skills: selectedSkills,
         availability,
@@ -157,14 +163,23 @@ export const VolunteerRegisterPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-mono uppercase tracking-wider text-slate-700 mb-1.5 font-bold">
-                  Phone Number *
+                <label className="block text-xs font-mono uppercase tracking-wider text-slate-700 mb-1 font-bold">
+                  Mobile Number *
                 </label>
+                <p className="text-[11px] text-slate-500 mb-1.5 font-sans">
+                  Enter your 10-digit mobile number.
+                </p>
                 <input
                   type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  maxLength={10}
                   required
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setPhone(val);
+                  }}
                   placeholder="e.g. 9887654321"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#dc2626] focus:bg-white focus:ring-2 focus:ring-red-500/10 transition-all font-mono"
                 />
