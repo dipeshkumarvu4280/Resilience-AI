@@ -6,8 +6,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.api.deps import require_admin, get_current_user
 from app.db.mongodb import get_database
 from app.models.enums import UserRole
-from app.models.user import UserResponse, VolunteerProfile, UserCreate, UserProfileUpdate
+from app.models.user import UserResponse, VolunteerProfile, UserCreate, UserProfileUpdate, UserPhoneUpdateRequest
 from app.core.security import get_password_hash
+from app.services.notification.sms_provider import normalize_phone_e164
 
 router = APIRouter()
 
@@ -274,6 +275,113 @@ async def provision_operator_google_identity(
         "timestamp": now,
     })
     
+    updated_doc = await db["users"].find_one({"_id": user_doc["_id"]})
+
+    vol_prof = None
+    if updated_doc.get("volunteer_profile"):
+        vol_prof = VolunteerProfile(**updated_doc["volunteer_profile"])
+
+    return UserResponse(
+        id=str(updated_doc["_id"]),
+        phone=updated_doc["phone"],
+        full_name=updated_doc["full_name"],
+        email=updated_doc.get("email"),
+        role=UserRole(updated_doc["role"]),
+        is_active=updated_doc.get("is_active", True),
+        badge_number=updated_doc.get("badge_number"),
+        department_or_agency=updated_doc.get("department_or_agency"),
+        created_at=updated_doc.get("created_at", now),
+        volunteer_profile=vol_prof,
+        google_sub=updated_doc.get("google_sub"),
+    )
+
+
+@router.patch("/{user_id}", response_model=UserResponse, summary="Admin Update User Phone")
+@router.patch("/{user_id}/phone", response_model=UserResponse, summary="Admin Update User Phone (Alias)")
+async def update_user_phone_by_admin(
+    user_id: str,
+    payload: UserPhoneUpdateRequest,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_admin: UserResponse = Depends(require_admin),
+):
+    """
+    Admin-only endpoint to update an existing Emergency Officer or operator's real phone number.
+    Normalizes phone to E.164 format (+<country_code><national_number>).
+    Synchronizes with notification preferences if present and records an immutable audit log entry.
+    Does not allow modifying role, password, permissions, or arbitrary fields.
+    """
+    raw_phone = payload.phone.strip() if payload.phone else ""
+    if not raw_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phone number cannot be empty.",
+        )
+
+    norm_phone = normalize_phone_e164(raw_phone)
+    if not norm_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid phone number format: '{raw_phone}'. Must normalize to valid E.164 format (+<country_code><digits>).",
+        )
+
+    try:
+        obj_id = ObjectId(user_id)
+        query = {"_id": obj_id}
+    except Exception:
+        query = {"$or": [{"user_id": user_id}, {"phone": user_id}]}
+
+    user_doc = await db["users"].find_one(query)
+    if not user_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User record '{user_id}' not found.",
+        )
+
+    # Check if another user already has this phone number
+    existing_phone_user = await db["users"].find_one({
+        "phone": norm_phone,
+        "_id": {"$ne": user_doc["_id"]},
+    })
+    if existing_phone_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Phone number '{norm_phone}' is already registered to another user ({existing_phone_user.get('full_name')}).",
+        )
+
+    prev_phone = user_doc.get("phone")
+    now = datetime.now(timezone.utc)
+    uid_str = str(user_doc["_id"])
+
+    # 1. Update canonical user document in MongoDB users collection
+    await db["users"].update_one(
+        {"_id": user_doc["_id"]},
+        {"$set": {"phone": norm_phone, "updated_at": now}},
+    )
+
+    # 2. Synchronize notification preferences if record exists
+    await db["notification_preferences"].update_many(
+        {"user_id": {"$in": [uid_str, prev_phone]}},
+        {"$set": {"phone_number": norm_phone, "updated_at": now}},
+    )
+
+    # 3. Create immutable audit log record
+    audit_doc = {
+        "event_id": f"EVT-PHONE-{uid_str[-8:]}",
+        "action": "ADMIN_OFFICER_PHONE_UPDATED",
+        "actor_id": current_admin.id,
+        "actor_name": current_admin.full_name,
+        "actor_role": current_admin.role.value,
+        "target_user_id": uid_str,
+        "target_user_name": user_doc.get("full_name"),
+        "target_user_role": user_doc.get("role"),
+        "previous_phone": prev_phone,
+        "new_phone": norm_phone,
+        "details": f"Admin '{current_admin.full_name}' updated phone number for {user_doc.get('role')} '{user_doc.get('full_name')}' from {prev_phone} to {norm_phone}.",
+        "timestamp": now,
+        "status": "SUCCESS",
+    }
+    await db["audit_logs"].insert_one(audit_doc)
+
     updated_doc = await db["users"].find_one({"_id": user_doc["_id"]})
 
     vol_prof = None

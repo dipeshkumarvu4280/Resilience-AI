@@ -24,6 +24,7 @@ import {
   Activity,
   FileCheck,
   BarChart3,
+  Phone,
 } from 'lucide-react';
 
 export const AdminControlCenter: React.FC = () => {
@@ -60,6 +61,13 @@ export const AdminControlCenter: React.FC = () => {
   const [provisionError, setProvisionError] = useState<string | null>(null);
   const [provisionSuccess, setProvisionSuccess] = useState<string | null>(null);
 
+  // Phone Update Modal State
+  const [phoneModalUser, setPhoneModalUser] = useState<User | null>(null);
+  const [editPhone, setEditPhone] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneSuccess, setPhoneSuccess] = useState<string | null>(null);
+
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
@@ -81,6 +89,13 @@ export const AdminControlCenter: React.FC = () => {
     setProvisionEmail(u.email || '');
     setProvisionError(null);
     setProvisionSuccess(null);
+  };
+
+  const openPhoneModal = (u: User) => {
+    setPhoneModalUser(u);
+    setEditPhone(u.phone || '');
+    setPhoneError(null);
+    setPhoneSuccess(null);
   };
 
   const handleSaveProvision = async (e: React.FormEvent) => {
@@ -114,6 +129,34 @@ export const AdminControlCenter: React.FC = () => {
       setProvisionError(detail);
     } finally {
       setProvisioning(false);
+    }
+  };
+
+  const handleSavePhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneModalUser || !editPhone.trim()) {
+      setPhoneError('A valid phone number is required.');
+      return;
+    }
+
+    setSavingPhone(true);
+    setPhoneError(null);
+    setPhoneSuccess(null);
+
+    try {
+      await api.patch(`/users/${phoneModalUser.id}`, {
+        phone: editPhone.trim(),
+      });
+      setPhoneSuccess(`Phone number updated successfully for ${phoneModalUser.full_name}.`);
+      await fetchUsers();
+      setTimeout(() => {
+        setPhoneModalUser(null);
+      }, 1200);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || err.message || 'Failed to update phone number.';
+      setPhoneError(detail);
+    } finally {
+      setSavingPhone(false);
     }
   };
 
@@ -499,13 +542,23 @@ export const AdminControlCenter: React.FC = () => {
                           {u.badge_number || u.volunteer_profile?.zone_or_district || '—'}
                         </td>
                         <td className="py-3.5 px-3.5 text-right">
-                          <button
-                            onClick={() => openProvisionModal(u)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold transition-all shadow-2xs"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                            <span>{u.email ? 'Update Google' : 'Provision Google'}</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => openPhoneModal(u)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                              title="Update official emergency phone number"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-slate-600" />
+                              <span>Edit Phone</span>
+                            </button>
+                            <button
+                              onClick={() => openProvisionModal(u)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span>{u.email ? 'Update Google' : 'Provision Google'}</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -603,14 +656,14 @@ export const AdminControlCenter: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedUser(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-all"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={provisioning}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   {provisioning ? (
                     <>
@@ -619,6 +672,91 @@ export const AdminControlCenter: React.FC = () => {
                     </>
                   ) : (
                     <span>Authorize Operator</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Phone Update Modal */}
+      {phoneModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md p-6 rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <button
+              onClick={() => setPhoneModalUser(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-3 text-slate-800">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
+                <Phone className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Update Emergency Phone Number
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Official contact for {phoneModalUser.full_name} ({phoneModalUser.role})
+                </p>
+              </div>
+            </div>
+
+            {phoneError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2 text-xs text-red-700">
+                <ShieldAlert className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <span>{phoneError}</span>
+              </div>
+            )}
+
+            {phoneSuccess && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-2 text-xs text-emerald-700">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                <span>{phoneSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSavePhone} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Real Phone Number (E.164 standard)
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="e.g. +919808123456 or 9801338643"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs font-mono"
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                  This phone number will be used for critical emergency dispatch alerts, SMS notifications, and delivery lifecycle tracking.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPhoneModalUser(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPhone}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  {savingPhone ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Phone</span>
                   )}
                 </button>
               </div>

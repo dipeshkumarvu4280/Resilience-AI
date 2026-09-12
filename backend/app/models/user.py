@@ -76,3 +76,7 @@ class UserInDB(UserBase):
     volunteer_profile: Optional[VolunteerProfile] = None
     auth_provider: str = "local"  # 'local' or 'google'
     last_login: Optional[datetime] = None
+
+
+class UserPhoneUpdateRequest(BaseModel):
+    phone: str = Field(..., min_length=7, max_length=25, description="Real phone number to update for emergency notifications (will be normalized to E.164)")
