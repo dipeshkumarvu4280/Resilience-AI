@@ -560,9 +560,146 @@ class NotificationService:
         )
         return result.modified_count
 
+    async def process_whatsapp_webhook(
+        self, payload: Dict[str, Any], db: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Process genuine Meta WhatsApp Cloud API webhook event payloads.
+        Handles message delivery status updates (sent, delivered, read, failed) and inbound messages idempotently.
+        """
+        database = self._get_db(db)
+        if not isinstance(payload, dict):
+            return {"status": "ignored", "reason": "invalid_payload_format"}
+
+        obj = payload.get("object")
+        if obj != "whatsapp_business_account":
+            return {"status": "ignored", "reason": "non_whatsapp_object"}
+
+        entries = payload.get("entry", [])
+        if not isinstance(entries, list):
+            return {"status": "ignored", "reason": "invalid_entries"}
+
+        processed_statuses = 0
+        processed_messages = 0
+
+        # Status progression order to prevent backward status downgrades
+        status_rank = {
+            NotificationDeliveryStatus.PENDING.value: 0,
+            NotificationDeliveryStatus.QUEUED.value: 1,
+            NotificationDeliveryStatus.SENDING.value: 2,
+            NotificationDeliveryStatus.SENT.value: 3,
+            NotificationDeliveryStatus.DELIVERED.value: 4,
+            NotificationDeliveryStatus.READ.value: 5,
+            NotificationDeliveryStatus.FAILED.value: 6,
+        }
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            changes = entry.get("changes", [])
+            if not isinstance(changes, list):
+                continue
+            for change in changes:
+                if not isinstance(change, dict):
+                    continue
+                value = change.get("value", {})
+                if not isinstance(value, dict):
+                    continue
+
+                # 1. Process Status Updates
+                statuses = value.get("statuses", [])
+                if isinstance(statuses, list):
+                    for st in statuses:
+                        if not isinstance(st, dict):
+                            continue
+                        msg_id = st.get("id")
+                        status_raw = (st.get("status") or "").lower()
+                        ts_raw = st.get("timestamp")
+                        errors = st.get("errors", [])
+
+                        if not msg_id or not status_raw:
+                            continue
+
+                        status_map = {
+                            "sent": NotificationDeliveryStatus.SENT,
+                            "delivered": NotificationDeliveryStatus.DELIVERED,
+                            "read": NotificationDeliveryStatus.READ,
+                            "failed": NotificationDeliveryStatus.FAILED,
+                        }
+                        new_status = status_map.get(status_raw)
+                        if not new_status:
+                            continue
+
+                        now_dt = datetime.now(timezone.utc)
+                        if ts_raw:
+                            try:
+                                now_dt = datetime.fromtimestamp(float(ts_raw), tz=timezone.utc)
+                            except Exception:
+                                pass
+
+                        error_code = None
+                        error_message = None
+                        if errors and isinstance(errors, list) and len(errors) > 0:
+                            first_err = errors[0] if isinstance(errors[0], dict) else {}
+                            error_code = str(first_err.get("code") or "ERROR")
+                            error_message = str(first_err.get("title") or first_err.get("message") or "Delivery failed")
+
+                        # Build update document
+                        update_doc: Dict[str, Any] = {
+                            "recipients.$.whatsapp.status": new_status.value,
+                        }
+                        if new_status == NotificationDeliveryStatus.SENT:
+                            update_doc["recipients.$.whatsapp.sent_at"] = now_dt
+                        elif new_status == NotificationDeliveryStatus.DELIVERED:
+                            update_doc["recipients.$.whatsapp.delivered_at"] = now_dt
+                        elif new_status == NotificationDeliveryStatus.READ:
+                            update_doc["recipients.$.whatsapp.read_at"] = now_dt
+                        elif new_status == NotificationDeliveryStatus.FAILED:
+                            update_doc["recipients.$.whatsapp.failed_at"] = now_dt
+                            if error_code:
+                                update_doc["recipients.$.whatsapp.error_code"] = error_code
+                            if error_message:
+                                update_doc["recipients.$.whatsapp.error_message"] = error_message
+
+                        res = await database["notifications"].update_one(
+                            {"recipients.whatsapp.provider_message_id": msg_id},
+                            {"$set": update_doc},
+                        )
+                        if res.modified_count > 0:
+                            processed_statuses += 1
+                            logger.info("WhatsApp delivery status updated: msg_id=%s status=%s", msg_id, new_status.value)
+
+                # 2. Process Inbound Messages (Queries / Status checks)
+                messages = value.get("messages", [])
+                if isinstance(messages, list):
+                    for msg in messages:
+                        if not isinstance(msg, dict):
+                            continue
+                        from_num = str(msg.get("from") or "")
+                        msg_id = msg.get("id")
+
+                        if msg_id and from_num:
+                            processed_messages += 1
+                            masked_num = f"{from_num[:3]}***{from_num[-3:]}" if len(from_num) >= 6 else "***"
+                            logger.info("WhatsApp inbound message acknowledged: from=%s id=%s", masked_num, msg_id)
+
+        return {
+            "status": "processed",
+            "statuses_updated": processed_statuses,
+            "messages_received": processed_messages,
+        }
+
     def get_channel_status(self) -> Dict[str, Any]:
         """Check operational and configuration status of delivery channels."""
         wa_configured = self.provider.is_configured()
+        has_verify_token = bool(settings.whatsapp_verify_token)
+        has_phone_id = bool(settings.WHATSAPP_PHONE_NUMBER_ID)
+        has_access_token = bool(settings.WHATSAPP_ACCESS_TOKEN)
+
+        status_val = "OPERATIONAL" if wa_configured else "NOT_CONFIGURED"
+        if has_access_token and not has_phone_id:
+            status_val = "ERROR"
+
         return {
             "in_app": {
                 "channel": NotificationChannel.IN_APP.value,
@@ -571,9 +708,11 @@ class NotificationService:
             },
             "whatsapp": {
                 "channel": NotificationChannel.WHATSAPP.value,
-                "status": "OPERATIONAL" if wa_configured else "NOT_CONFIGURED",
+                "status": status_val,
                 "configured": wa_configured,
                 "provider": settings.WHATSAPP_PROVIDER,
+                "webhook_configured": has_verify_token,
+                "api_version": settings.WHATSAPP_API_VERSION,
             },
         }
 

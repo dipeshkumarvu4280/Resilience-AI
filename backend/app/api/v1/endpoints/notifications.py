@@ -1,8 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import PlainTextResponse
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.models.enums import NotificationCategory, NotificationSeverity
 from app.models.notification import (
     NotificationPreference,
@@ -20,43 +22,73 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("", response_model=List[NotificationUserView])
-async def list_notifications(
-    category: Optional[NotificationCategory] = Query(None, description="Filter by category"),
-    severity: Optional[NotificationSeverity] = Query(None, description="Filter by severity"),
-    unread_only: bool = Query(False, description="Filter unread notifications only"),
-    limit: int = Query(50, ge=1, le=200, description="Max records to return"),
-    skip: int = Query(0, ge=0, description="Records to skip"),
-    current_user: UserResponse = Depends(get_current_user),
-    service: NotificationService = Depends(get_notification_service),
-) -> List[NotificationUserView]:
+# =======================================================
+# Meta WhatsApp Cloud API Webhook Endpoints (Public/Meta)
+# =======================================================
+
+@router.get("/whatsapp/webhook", response_class=PlainTextResponse, summary="Meta WhatsApp Webhook Verification")
+async def verify_whatsapp_webhook(
+    hub_mode: Optional[str] = Query(None, alias="hub.mode", description="Meta verification mode ('subscribe')"),
+    hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token", description="Configured verification secret token"),
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge", description="Challenge string echoed back on success"),
+) -> PlainTextResponse:
     """
-    Fetch paginated, user-scoped notifications for the authenticated operator/citizen.
-    Strictly isolated: users cannot view another user's notifications.
+    Meta WhatsApp Cloud API Webhook Verification Endpoint.
+    Validates hub.mode == 'subscribe' and hub.verify_token matches configured backend secret.
+    Returns hub.challenge as plain text on success, otherwise HTTP 403 Forbidden.
     """
-    return await service.get_user_notifications(
-        user_id=current_user.id,
-        category=category,
-        severity=severity,
-        unread_only=unread_only,
-        limit=limit,
-        skip=skip,
+    configured_token = settings.whatsapp_verify_token
+    if not configured_token:
+        logger.warning("WhatsApp webhook verification rejected: WHATSAPP_VERIFY_TOKEN is not configured on the backend.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Webhook verification failed: Verify token not configured on server.",
+        )
+
+    if hub_mode == "subscribe" and hub_verify_token and hub_verify_token == configured_token:
+        logger.info("Meta WhatsApp webhook verified successfully.")
+        return PlainTextResponse(content=hub_challenge or "", status_code=status.HTTP_200_OK)
+
+    logger.warning(
+        "WhatsApp webhook verification failed. mode=%s token_valid=%s",
+        hub_mode,
+        bool(hub_verify_token and hub_verify_token == configured_token),
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Verification failed: Invalid mode or verify token.",
     )
 
 
-@router.get("/unread-count")
-async def get_unread_count(
-    current_user: UserResponse = Depends(get_current_user),
+@router.post("/whatsapp/webhook", summary="Meta WhatsApp Webhook Event Ingestion")
+async def receive_whatsapp_webhook(
+    request: Request,
     service: NotificationService = Depends(get_notification_service),
-) -> Dict[str, int]:
+) -> Dict[str, Any]:
     """
-    Return exact unread in-app notification count for current user.
+    Meta WhatsApp Cloud API Webhook Event Receiver.
+    Accepts genuine Meta Cloud API delivery updates (sent, delivered, read, failed)
+    and processes events idempotently. Always returns HTTP 200 to acknowledge receipt to Meta.
     """
-    count = await service.get_unread_count(user_id=current_user.id)
-    return {"unread_count": count}
+    try:
+        payload = await request.json()
+    except Exception as ex:
+        logger.warning("WhatsApp webhook received malformed non-JSON payload: %s", str(ex))
+        return {"status": "ignored", "reason": "malformed_json"}
+
+    try:
+        result = await service.process_whatsapp_webhook(payload)
+        return {"status": "ok", "message": "EVENT_RECEIVED", "details": result}
+    except Exception as ex:
+        logger.error("Error processing WhatsApp webhook payload: %s", str(ex), exc_info=True)
+        return {"status": "ok", "message": "EVENT_RECEIVED", "error": "processing_error"}
 
 
-@router.get("/channels/status")
+# =======================================================
+# User-Scoped Notification Endpoints
+# =======================================================
+
+@router.get("/channels/status", summary="Get Notification Channels Status")
 async def get_channel_status(
     current_user: UserResponse = Depends(get_current_user),
     service: NotificationService = Depends(get_notification_service),

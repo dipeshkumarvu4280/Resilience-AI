@@ -241,24 +241,25 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
 
   return (
     <div
-      className={`relative w-full rounded-2xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/50 overflow-hidden flex flex-col justify-between ${className}`}
+      tabIndex={0}
+      className={`group relative w-full rounded-2xl border border-slate-300 bg-white shadow-md shadow-slate-200/80 hover:border-red-400 hover:shadow-2xl hover:shadow-red-500/10 hover:-translate-y-1 focus-visible:outline-none focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/20 focus-within:border-red-400 focus-within:shadow-2xl focus-within:shadow-red-500/10 transition-all duration-200 ease-out overflow-hidden flex flex-col justify-between ${className}`}
     >
       {/* Top Header Bar */}
-      <div className="px-4 py-3 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between z-20">
+      <div className="px-4 py-3 bg-slate-50/95 border-b border-slate-300 group-hover:border-red-100 transition-colors flex items-center justify-between z-20">
         <div className="font-sans text-xs font-bold text-slate-800 tracking-wider flex items-center gap-2">
           <MapIcon className="w-4 h-4 text-red-600" />
           <span className="font-mono text-[11px] font-extrabold uppercase text-slate-900">
             PUBLIC SITUATIONAL MAP
           </span>
-          <span className="text-slate-300 hidden sm:inline">—</span>
-          <span className="text-slate-500 font-mono text-[10px] hidden sm:inline">
+          <span className="text-slate-400 hidden sm:inline">—</span>
+          <span className="text-slate-600 font-mono text-[10px] font-semibold hidden sm:inline">
             GOOGLE MAPS PLATFORM
           </span>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Subtle Map Type Toggle */}
-          <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 text-[10px] font-semibold">
+          <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 text-[10px] font-semibold">
             <button
               type="button"
               onClick={() => handleToggleMapType('roadmap')}

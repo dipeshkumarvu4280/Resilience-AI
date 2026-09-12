@@ -167,6 +167,12 @@ class Settings(BaseSettings):
     WHATSAPP_BUSINESS_ACCOUNT_ID: Optional[str] = None
     WHATSAPP_APP_SECRET: Optional[str] = None
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: Optional[str] = None
+    WHATSAPP_VERIFY_TOKEN: Optional[str] = None
+    WHATSAPP_API_VERSION: str = "v18.0"
+
+    @property
+    def whatsapp_verify_token(self) -> str:
+        return (self.WHATSAPP_VERIFY_TOKEN or self.WHATSAPP_WEBHOOK_VERIFY_TOKEN or "").strip()
     
     # Phase 1: Live Web Push & VAPID Configuration (RFC 8291 / 8292)
     VAPID_PUBLIC_KEY: Optional[str] = None
