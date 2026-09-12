@@ -729,6 +729,7 @@ class OperationalDomain(str, Enum):
 class NotificationChannel(str, Enum):
     IN_APP = "IN_APP"
     WHATSAPP = "WHATSAPP"
+    SMS = "SMS"
 
 
 class NotificationDeliveryStatus(str, Enum):
@@ -737,6 +738,7 @@ class NotificationDeliveryStatus(str, Enum):
     SENDING = "SENDING"
     SENT = "SENT"
     DELIVERED = "DELIVERED"
+    UNDELIVERED = "UNDELIVERED"
     READ = "READ"
     FAILED = "FAILED"
     NOT_CONFIGURED = "NOT_CONFIGURED"

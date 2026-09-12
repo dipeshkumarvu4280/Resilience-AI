@@ -159,8 +159,8 @@ class Settings(BaseSettings):
     TEXT_FALLBACK_PROVIDER: str = "OPENAI"
     OPENAI_TEXT_TIMEOUT_SECONDS: float = 12.0
     
-    # Phase 7: WhatsApp Provider & Messaging Configuration
-    WHATSAPP_PROVIDER: str = "meta_cloud"  # "meta_cloud" or "mock"
+    # Phase 7: WhatsApp Provider & Messaging Configuration (Meta Cloud & Twilio Sandbox)
+    WHATSAPP_PROVIDER: str = "meta_cloud"  # "meta_cloud", "meta", "twilio", "mock", or "disabled"
     WHATSAPP_API_BASE_URL: str = "https://graph.facebook.com/v18.0"
     WHATSAPP_ACCESS_TOKEN: Optional[str] = None
     WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
@@ -169,6 +169,20 @@ class Settings(BaseSettings):
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: Optional[str] = None
     WHATSAPP_VERIFY_TOKEN: Optional[str] = None
     WHATSAPP_API_VERSION: str = "v18.0"
+
+    # Twilio WhatsApp Sandbox Configuration
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
+    TWILIO_WHATSAPP_ENABLED: bool = True
+    TWILIO_WHATSAPP_STATUS_CALLBACK_URL: Optional[str] = None
+    TWILIO_VALIDATE_SIGNATURE: bool = True
+
+    # Twilio SMS Configuration
+    SMS_PROVIDER: str = "disabled"  # "twilio", "mock", or "disabled"
+    TWILIO_SMS_ENABLED: bool = False
+    TWILIO_SMS_FROM: Optional[str] = None
+    TWILIO_SMS_STATUS_CALLBACK_URL: Optional[str] = None
 
     @property
     def whatsapp_verify_token(self) -> str:

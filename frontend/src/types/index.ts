@@ -1970,7 +1970,7 @@ export interface RunSimulationResponse {
 // Phase 7: Notification & Alert Engine Types
 // ==========================================
 
-export type NotificationChannel = 'IN_APP' | 'WHATSAPP';
+export type NotificationChannel = 'IN_APP' | 'WHATSAPP' | 'SMS';
 
 export type NotificationDeliveryStatus =
   | 'PENDING'
@@ -1978,6 +1978,7 @@ export type NotificationDeliveryStatus =
   | 'SENDING'
   | 'SENT'
   | 'DELIVERED'
+  | 'UNDELIVERED'
   | 'READ'
   | 'FAILED'
   | 'NOT_CONFIGURED'
@@ -2024,6 +2025,7 @@ export interface NotificationUserView {
   in_app_status: NotificationDeliveryStatus;
   read_at?: string | null;
   whatsapp_status: NotificationDeliveryStatus;
+  sms_status?: NotificationDeliveryStatus;
 }
 
 export interface NotificationPreference {
@@ -2031,6 +2033,7 @@ export interface NotificationPreference {
   user_id: string;
   in_app_enabled: boolean;
   whatsapp_enabled: boolean;
+  sms_enabled: boolean;
   phone_number?: string | null;
   notify_critical: boolean;
   notify_high: boolean;
@@ -2043,6 +2046,7 @@ export interface NotificationPreference {
 export interface NotificationPreferenceUpdate {
   in_app_enabled?: boolean;
   whatsapp_enabled?: boolean;
+  sms_enabled?: boolean;
   phone_number?: string | null;
   notify_critical?: boolean;
   notify_high?: boolean;
@@ -2062,6 +2066,13 @@ export interface ChannelStatusResponse {
     status: string;
     configured: boolean;
     provider?: string;
+  };
+  sms?: {
+    channel: string;
+    status: string;
+    configured: boolean;
+    provider?: string;
+    enabled?: boolean;
   };
 }
 

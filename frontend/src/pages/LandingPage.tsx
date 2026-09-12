@@ -10,7 +10,6 @@ import {
   Users,
   Lock,
   ArrowRight,
-  Radio,
   Siren,
   ExternalLink,
   Check,

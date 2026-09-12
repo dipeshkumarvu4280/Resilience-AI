@@ -85,6 +85,144 @@ async def receive_whatsapp_webhook(
 
 
 # =======================================================
+# Twilio WhatsApp Webhook Endpoints
+# =======================================================
+
+from app.services.notification.whatsapp_provider import validate_twilio_signature
+
+
+async def _verify_twilio_request(request: Request, form_dict: Dict[str, str]) -> None:
+    """Helper to validate X-Twilio-Signature header on incoming Twilio webhooks."""
+    if not settings.TWILIO_VALIDATE_SIGNATURE:
+        return
+
+    if not settings.TWILIO_AUTH_TOKEN:
+        logger.warning("Twilio signature validation failed: TWILIO_AUTH_TOKEN is not configured on server.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Twilio webhook validation failed: Auth token not configured on server.",
+        )
+
+    signature = request.headers.get("X-Twilio-Signature") or request.headers.get("x-twilio-signature")
+    if not signature:
+        logger.warning("Twilio webhook request rejected: Missing X-Twilio-Signature header.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Missing X-Twilio-Signature header.",
+        )
+
+    url_str = str(request.url)
+    is_valid = validate_twilio_signature(
+        url=url_str,
+        params=form_dict,
+        signature=signature,
+        auth_token=settings.TWILIO_AUTH_TOKEN,
+    )
+
+    # In reverse-proxy setups (e.g., Render/NGINX SSL termination), retry with https://
+    if not is_valid and url_str.startswith("http://"):
+        https_url = url_str.replace("http://", "https://", 1)
+        is_valid = validate_twilio_signature(
+            url=https_url,
+            params=form_dict,
+            signature=signature,
+            auth_token=settings.TWILIO_AUTH_TOKEN,
+        )
+
+    if not is_valid:
+        logger.warning("Twilio webhook rejected: Invalid X-Twilio-Signature for URL %s", url_str)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Invalid Twilio signature.",
+        )
+
+
+@router.post("/whatsapp/twilio/status", summary="Twilio WhatsApp Delivery Status Callback")
+@router.post("/sms/twilio/status", summary="Twilio SMS Delivery Status Callback")
+@router.post("/twilio/status", summary="Twilio Unified Messaging Delivery Status Callback")
+async def receive_twilio_status(
+    request: Request,
+    service: NotificationService = Depends(get_notification_service),
+) -> Dict[str, Any]:
+    """
+    Twilio Delivery Status Callback Endpoint (WhatsApp & SMS).
+    Accepts Twilio delivery states (queued, accepted, sending, sent, delivered, undelivered, read, failed)
+    and updates MongoDB notification_deliveries idempotently.
+    Validates X-Twilio-Signature in production.
+    """
+    try:
+        form = await request.form()
+        form_dict = {k: str(v) for k, v in form.items()}
+    except Exception as ex:
+        logger.warning("Failed to parse Twilio status callback form body: %s", str(ex))
+        form_dict = {}
+
+    await _verify_twilio_request(request, form_dict)
+
+    try:
+        result = await service.process_twilio_status_callback(form_dict)
+        return {"status": "ok", "result": result}
+    except Exception as ex:
+        logger.error("Error processing Twilio status callback: %s", str(ex), exc_info=True)
+        return {"status": "error", "detail": str(ex)}
+
+
+@router.post("/whatsapp/twilio/inbound", summary="Twilio WhatsApp Inbound Message Acknowledgment")
+async def receive_twilio_whatsapp_inbound(
+    request: Request,
+    service: NotificationService = Depends(get_notification_service),
+) -> PlainTextResponse:
+    """
+    Twilio WhatsApp Inbound Message Receiver.
+    Acknowledges incoming messages safely with TwiML Response.
+    IMPORTANT: Inbound WhatsApp messages NEVER trigger citizen emergency reporting.
+    Citizen emergency reporting remains strictly on /report-emergency.
+    """
+    try:
+        form = await request.form()
+        form_dict = {k: str(v) for k, v in form.items()}
+    except Exception as ex:
+        logger.warning("Failed to parse Twilio inbound form body: %s", str(ex))
+        form_dict = {}
+
+    await _verify_twilio_request(request, form_dict)
+
+    await service.process_twilio_inbound(form_dict)
+
+    # Return valid empty TwiML response
+    twiml_response = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
+    return PlainTextResponse(content=twiml_response, media_type="application/xml", status_code=status.HTTP_200_OK)
+
+
+@router.post("/sms/twilio/inbound", summary="Twilio SMS Inbound Message Acknowledgment")
+@router.post("/twilio/inbound", summary="Twilio Inbound Message Receiver")
+async def receive_twilio_sms_inbound(
+    request: Request,
+    service: NotificationService = Depends(get_notification_service),
+) -> PlainTextResponse:
+    """
+    Twilio SMS Inbound Message Receiver.
+    Acknowledges incoming messages safely with TwiML Response.
+    IMPORTANT: Inbound SMS messages NEVER trigger citizen emergency reporting.
+    Citizen emergency reporting remains strictly on /report-emergency.
+    """
+    try:
+        form = await request.form()
+        form_dict = {k: str(v) for k, v in form.items()}
+    except Exception as ex:
+        logger.warning("Failed to parse Twilio SMS inbound form body: %s", str(ex))
+        form_dict = {}
+
+    await _verify_twilio_request(request, form_dict)
+
+    await service.process_twilio_inbound_sms(form_dict)
+
+    # Return valid empty TwiML response
+    twiml_response = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
+    return PlainTextResponse(content=twiml_response, media_type="application/xml", status_code=status.HTTP_200_OK)
+
+
+# =======================================================
 # User-Scoped Notification Endpoints
 # =======================================================
 

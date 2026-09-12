@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bell, Phone, Save, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Bell, Phone, Save, CheckCircle2, AlertCircle, Sliders } from 'lucide-react';
 import { notificationApi } from '../../services/notificationApi';
 
 interface NotificationPreferencesModalProps {
@@ -15,6 +15,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
 }) => {
   const [inAppEnabled, setInAppEnabled] = useState(true);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+  const [smsEnabled, setSmsEnabled] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [notifyCritical, setNotifyCritical] = useState(true);
   const [notifyHigh, setNotifyHigh] = useState(true);
@@ -40,6 +41,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
       const pref = await notificationApi.getPreferences();
       setInAppEnabled(pref.in_app_enabled);
       setWhatsappEnabled(pref.whatsapp_enabled);
+      setSmsEnabled(pref.sms_enabled ?? false);
       setPhoneNumber(pref.phone_number || '');
       setNotifyCritical(pref.notify_critical);
       setNotifyHigh(pref.notify_high);
@@ -63,6 +65,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
       await notificationApi.updatePreferences({
         in_app_enabled: inAppEnabled,
         whatsapp_enabled: whatsappEnabled,
+        sms_enabled: smsEnabled,
         phone_number: phoneNumber.trim() || undefined,
         notify_critical: notifyCritical,
         notify_high: notifyHigh,
@@ -76,9 +79,9 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
         setSaveSuccess(false);
         if (onSaved) onSaved();
         onClose();
-      }, 1000);
+      }, 700);
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to save notification preferences');
+      setError(err?.response?.data?.detail || 'Failed to update preferences');
     } finally {
       setSaving(false);
     }
@@ -87,35 +90,35 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-red-50 text-red-600 border border-red-200/60 shadow-sm">
-              <Bell className="w-4 h-4" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="px-6 py-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-sm">
+              <Sliders className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-extrabold text-slate-900 font-sans tracking-tight">
+              <h3 className="text-sm font-extrabold text-slate-900 font-sans">
                 Notification Preferences
               </h3>
               <p className="text-[11px] text-slate-500 font-sans">
-                Configure delivery channels and alert thresholds
+                Configure delivery channels & emergency escalation rules
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <form onSubmit={handleSave} className="p-6 space-y-5">
+        {/* Content */}
+        <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-5">
           {error && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2 font-medium">
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -129,13 +132,13 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
           )}
 
           {loading ? (
-            <div className="py-8 text-center text-xs text-slate-400">Loading user preferences...</div>
+            <div className="py-12 text-center text-xs text-slate-400">Loading preferences...</div>
           ) : (
             <>
-              {/* Channel Toggles */}
+              {/* Delivery Channels */}
               <div className="space-y-3">
                 <label className="block text-[11px] font-mono uppercase tracking-wider font-bold text-slate-500">
-                  Delivery Channels
+                  Active Channels
                 </label>
 
                 {/* In-App Channel */}
@@ -176,22 +179,43 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                       className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
                     />
                   </div>
-
-                  {whatsappEnabled && (
-                    <div className="pt-2 border-t border-slate-100">
-                      <label className="block text-[10px] font-mono uppercase font-bold text-slate-600 mb-1">
-                        Recipient Phone Number (E.164 format)
-                      </label>
-                      <input
-                        type="tel"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
-                        placeholder="+1234567890"
-                        className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-                  )}
                 </div>
+
+                {/* SMS Channel */}
+                <div className="space-y-2 p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
+                        <Phone className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 font-sans">SMS Emergency Alerts</div>
+                        <div className="text-[11px] text-slate-500">Direct critical SMS notifications</div>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={smsEnabled}
+                      onChange={(e) => setSmsEnabled(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {(whatsappEnabled || smsEnabled) && (
+                  <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50">
+                    <label className="block text-[10px] font-mono uppercase font-bold text-slate-600 mb-1">
+                      Recipient Phone Number (E.164 format)
+                    </label>
+                    <input
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="+919801338643"
+                      className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Alert Category Thresholds */}

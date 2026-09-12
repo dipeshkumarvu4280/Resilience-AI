@@ -142,6 +142,25 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
     }
   };
 
+  const getSmsStatusBadge = (status?: string) => {
+    switch (status) {
+      case 'SENT':
+      case 'DELIVERED':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'QUEUED':
+      case 'SENDING':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'FAILED':
+      case 'UNDELIVERED':
+        return 'bg-red-50 text-red-700 border-red-200';
+      case 'NOT_CONFIGURED':
+        return 'bg-slate-100 text-slate-600 border-slate-200';
+      case 'SKIPPED':
+      default:
+        return 'bg-slate-50 text-slate-400 border-slate-200';
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -224,23 +243,38 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
           </div>
 
           {/* Channel Health Status Strip */}
-          <div className="px-5 py-2 bg-slate-100/70 border-b border-slate-200/80 flex items-center justify-between text-[10px] font-mono text-slate-600">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>In-App: <strong className="text-slate-800">OPERATIONAL</strong></span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  channelStatus?.whatsapp?.configured ? 'bg-emerald-500' : 'bg-slate-400'
-                }`}
-              />
-              <span>
-                WhatsApp:{' '}
-                <strong className={channelStatus?.whatsapp?.configured ? 'text-emerald-700' : 'text-slate-500'}>
-                  {channelStatus?.whatsapp?.configured ? 'OPERATIONAL' : 'NOT CONFIGURED'}
-                </strong>
-              </span>
+          <div className="px-5 py-2 bg-slate-100/70 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono text-slate-600">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>In-App: <strong className="text-slate-800">OK</strong></span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    channelStatus?.whatsapp?.configured ? 'bg-emerald-500' : 'bg-slate-400'
+                  }`}
+                />
+                <span>
+                  WA:{' '}
+                  <strong className={channelStatus?.whatsapp?.configured ? 'text-emerald-700' : 'text-slate-500'}>
+                    {channelStatus?.whatsapp?.configured ? 'OK' : 'OFF'}
+                  </strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    channelStatus?.sms?.configured ? 'bg-emerald-500' : 'bg-slate-400'
+                  }`}
+                />
+                <span>
+                  SMS:{' '}
+                  <strong className={channelStatus?.sms?.configured ? 'text-emerald-700' : 'text-slate-500'}>
+                    {channelStatus?.sms?.configured ? 'OK' : 'OFF'}
+                  </strong>
+                </span>
+              </div>
             </div>
             {unreadCount > 0 && (
               <button
@@ -345,6 +379,17 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                         >
                           WA: {notif.whatsapp_status.replace('_', ' ')}
                         </span>
+
+                        {notif.sms_status && notif.sms_status !== 'SKIPPED' && notif.sms_status !== 'NOT_CONFIGURED' && (
+                          <span
+                            className={`px-1.5 py-0.2 rounded border text-[9px] ${getSmsStatusBadge(
+                              notif.sms_status
+                            )}`}
+                            title={`SMS status: ${notif.sms_status}`}
+                          >
+                            SMS: {notif.sms_status.replace('_', ' ')}
+                          </span>
+                        )}
                       </div>
 
                       {/* Action buttons */}

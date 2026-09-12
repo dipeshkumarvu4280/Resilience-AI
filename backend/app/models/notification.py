@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from app.models.enums import (
     NotificationCategory,
     NotificationChannel,
@@ -11,12 +11,14 @@ from app.models.enums import (
 
 
 class InAppDeliveryState(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
     status: NotificationDeliveryStatus = NotificationDeliveryStatus.PENDING
     delivered_at: Optional[datetime] = None
     read_at: Optional[datetime] = None
 
 
 class WhatsAppDeliveryState(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
     status: NotificationDeliveryStatus = NotificationDeliveryStatus.NOT_CONFIGURED
     queued_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
@@ -28,15 +30,30 @@ class WhatsAppDeliveryState(BaseModel):
     error_message: Optional[str] = None
 
 
+class SmsDeliveryState(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+    status: NotificationDeliveryStatus = NotificationDeliveryStatus.NOT_CONFIGURED
+    queued_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
+    provider_message_id: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 class NotificationRecipientInfo(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
     user_id: str
     role: Optional[UserRole] = None
     phone_number: Optional[str] = None
     in_app: InAppDeliveryState = Field(default_factory=InAppDeliveryState)
     whatsapp: WhatsAppDeliveryState = Field(default_factory=WhatsAppDeliveryState)
+    sms: SmsDeliveryState = Field(default_factory=SmsDeliveryState)
 
 
 class NotificationDeepLink(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
     entity_type: Optional[str] = None  # e.g., "CITIZEN_REPORT", "SITUATION", "COORDINATION_PLAN", "MONITORING_EVENT"
     entity_id: Optional[str] = None
     situation_id: Optional[str] = None
@@ -45,6 +62,7 @@ class NotificationDeepLink(BaseModel):
 
 
 class Notification(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
     notification_id: str
     event_id: Optional[str] = None
     category: NotificationCategory
@@ -60,11 +78,13 @@ class Notification(BaseModel):
     recipients: List[NotificationRecipientInfo] = Field(default_factory=list)
 
 
+
 class NotificationPreference(BaseModel):
     preference_id: str
     user_id: str
     in_app_enabled: bool = True
     whatsapp_enabled: bool = False
+    sms_enabled: bool = False
     phone_number: Optional[str] = None
     notify_critical: bool = True
     notify_high: bool = True
@@ -77,6 +97,7 @@ class NotificationPreference(BaseModel):
 class NotificationPreferenceUpdate(BaseModel):
     in_app_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
+    sms_enabled: Optional[bool] = None
     phone_number: Optional[str] = None
     notify_critical: Optional[bool] = None
     notify_high: Optional[bool] = None
@@ -101,3 +122,4 @@ class NotificationUserView(BaseModel):
     in_app_status: NotificationDeliveryStatus
     read_at: Optional[datetime] = None
     whatsapp_status: NotificationDeliveryStatus
+    sms_status: NotificationDeliveryStatus = NotificationDeliveryStatus.NOT_CONFIGURED

@@ -22,7 +22,12 @@ from app.models.notification import (
     NotificationPreferenceUpdate,
     NotificationRecipientInfo,
     NotificationUserView,
+    SmsDeliveryState,
     WhatsAppDeliveryState,
+)
+from app.services.notification.sms_provider import (
+    SmsProviderInterface,
+    get_sms_provider,
 )
 from app.services.notification.whatsapp_provider import (
     WhatsAppProviderInterface,
@@ -35,18 +40,29 @@ logger = logging.getLogger(__name__)
 class NotificationService:
     """
     Centralized, authoritative, event-driven Notification Dispatcher & Management Engine.
-    Coordinates In-App and WhatsApp channels with deduplication, recipient resolution,
+    Coordinates In-App, WhatsApp, and SMS channels with deduplication, recipient resolution,
     severity escalation, preference enforcement, and simulation isolation.
     """
 
-    def __init__(self, whatsapp_provider: Optional[WhatsAppProviderInterface] = None):
+    def __init__(
+        self,
+        whatsapp_provider: Optional[WhatsAppProviderInterface] = None,
+        sms_provider: Optional[SmsProviderInterface] = None,
+    ):
         self._provider = whatsapp_provider
+        self._sms_provider = sms_provider
 
     @property
     def provider(self) -> WhatsAppProviderInterface:
         if self._provider is not None:
             return self._provider
         return get_whatsapp_provider()
+
+    @property
+    def sms_provider(self) -> SmsProviderInterface:
+        if self._sms_provider is not None:
+            return self._sms_provider
+        return get_sms_provider()
 
     @staticmethod
     def compute_fingerprint(
@@ -102,6 +118,7 @@ class NotificationService:
             user_id=user_id,
             in_app_enabled=True,
             whatsapp_enabled=bool(phone),
+            sms_enabled=False,
             phone_number=phone,
             notify_critical=True,
             notify_high=True,
@@ -183,6 +200,17 @@ class NotificationService:
                         "phone_number": phone,
                     }
 
+            # Fallback for explicit target_user_ids not found in users collection
+            for tid in target_user_ids:
+                if tid not in resolved_map and tid not in exclude_set:
+                    pref_doc = await database["notification_preferences"].find_one({"user_id": tid})
+                    phone = pref_doc.get("phone_number") if pref_doc else None
+                    resolved_map[tid] = {
+                        "user_id": tid,
+                        "role": None,
+                        "phone_number": phone,
+                    }
+
         # 2. Query by target roles
         if target_roles:
             role_values = [r.value if isinstance(r, UserRole) else str(r) for r in target_roles]
@@ -241,6 +269,15 @@ class NotificationService:
         lines.append("")
         lines.append("Access Emergency Command Center for operational actions.")
         return "\n".join(lines)
+
+    def _format_sms_message(
+        self,
+        severity: NotificationSeverity,
+        title: str,
+        message: str,
+    ) -> str:
+        """Format a concise, controlled emergency SMS notification."""
+        return f"RESILIENCE [{severity.value}]: {title}. {message} Follow Command Center guidance."
 
     async def dispatch_event(
         self,
@@ -301,6 +338,7 @@ class NotificationService:
         # 3. Build Recipient Info & Evaluate Escalation Policy
         recipient_infos: List[NotificationRecipientInfo] = []
         whatsapp_tasks_to_run = []
+        sms_tasks_to_run = []
 
         whatsapp_text = self._format_whatsapp_message(
             severity=severity,
@@ -308,6 +346,11 @@ class NotificationService:
             message=message,
             category=category,
             metadata=meta,
+        )
+        sms_text = self._format_sms_message(
+            severity=severity,
+            title=title,
+            message=message,
         )
 
         for rec in raw_recipients:
@@ -328,15 +371,17 @@ class NotificationService:
             # Evaluate WhatsApp Channel
             whatsapp_state = WhatsAppDeliveryState()
 
-            # SIMULATION SAFETY RULE: Simulation notifications NEVER trigger WhatsApp
+            # Evaluate SMS Channel
+            sms_state = SmsDeliveryState()
+
+            # SIMULATION SAFETY RULE: Simulation notifications NEVER trigger WhatsApp or SMS
             if is_simulation:
                 whatsapp_state.status = NotificationDeliveryStatus.SKIPPED
+                sms_state.status = NotificationDeliveryStatus.SKIPPED
             else:
-                # Severity Escalation Policy & Preferences
+                # Severity Escalation Policy & Preferences for WhatsApp
                 should_attempt_whatsapp = False
-
                 if severity == NotificationSeverity.CRITICAL:
-                    # Critical alerts escalate to all recipients with phone number or enabled preferences
                     should_attempt_whatsapp = bool(phone and (pref.whatsapp_enabled or pref.notify_critical))
                 elif severity == NotificationSeverity.HIGH:
                     should_attempt_whatsapp = bool(phone and pref.whatsapp_enabled and pref.notify_high)
@@ -357,12 +402,36 @@ class NotificationService:
                 else:
                     whatsapp_state.status = NotificationDeliveryStatus.SKIPPED
 
+                # Severity Escalation Policy & Preferences for SMS
+                should_attempt_sms = False
+                if severity == NotificationSeverity.CRITICAL:
+                    should_attempt_sms = bool(phone and (pref.sms_enabled or pref.notify_critical))
+                elif severity == NotificationSeverity.HIGH:
+                    should_attempt_sms = bool(phone and pref.sms_enabled and pref.notify_high)
+                elif severity == NotificationSeverity.MEDIUM:
+                    should_attempt_sms = bool(phone and pref.sms_enabled and pref.notify_operational)
+                else:  # LOW
+                    should_attempt_sms = False
+
+                if should_attempt_sms and phone:
+                    if self.sms_provider.is_configured():
+                        sms_state.status = NotificationDeliveryStatus.QUEUED
+                        sms_state.queued_at = now
+                        sms_tasks_to_run.append((uid, phone))
+                    else:
+                        sms_state.status = NotificationDeliveryStatus.NOT_CONFIGURED
+                        sms_state.error_code = "CREDENTIALS_MISSING"
+                        sms_state.error_message = "SMS provider credentials/sender not configured in environment."
+                else:
+                    sms_state.status = NotificationDeliveryStatus.SKIPPED
+
             rec_info = NotificationRecipientInfo(
                 user_id=uid,
                 role=role,
                 phone_number=phone,
                 in_app=in_app_state,
                 whatsapp=whatsapp_state,
+                sms=sms_state,
             )
             recipient_infos.append(rec_info)
 
@@ -437,6 +506,44 @@ class NotificationService:
             except Exception as ex:
                 logger.error("Error executing WhatsApp dispatch to %s: %s", phone, str(ex))
 
+        # 7. Execute Queued SMS Deliveries Asynchronously
+        for uid, phone in sms_tasks_to_run:
+            try:
+                res_sms = await self.sms_provider.send_sms(
+                    recipient_phone=phone,
+                    message=sms_text,
+                )
+                now_sms = datetime.now(timezone.utc)
+                update_sms_fields = {
+                    "recipients.$.sms.status": res_sms.status.value,
+                    "recipients.$.sms.provider_message_id": res_sms.provider_message_id,
+                    "recipients.$.sms.error_code": res_sms.error_code,
+                    "recipients.$.sms.error_message": res_sms.error_message,
+                }
+                if res_sms.status in (NotificationDeliveryStatus.SENT, NotificationDeliveryStatus.QUEUED, NotificationDeliveryStatus.SENDING):
+                    update_sms_fields["recipients.$.sms.sent_at"] = now_sms
+                elif res_sms.status in (NotificationDeliveryStatus.FAILED, NotificationDeliveryStatus.UNDELIVERED):
+                    update_sms_fields["recipients.$.sms.failed_at"] = now_sms
+
+                await database["notifications"].update_one(
+                    {"notification_id": notification_id, "recipients.user_id": uid},
+                    {"$set": update_sms_fields},
+                )
+
+                for r in notification.recipients:
+                    if r.user_id == uid:
+                        r.sms.status = res_sms.status
+                        r.sms.provider_message_id = res_sms.provider_message_id
+                        r.sms.error_code = res_sms.error_code
+                        r.sms.error_message = res_sms.error_message
+                        if res_sms.status in (NotificationDeliveryStatus.SENT, NotificationDeliveryStatus.QUEUED, NotificationDeliveryStatus.SENDING):
+                            r.sms.sent_at = now_sms
+                        elif res_sms.status in (NotificationDeliveryStatus.FAILED, NotificationDeliveryStatus.UNDELIVERED):
+                            r.sms.failed_at = now_sms
+
+            except Exception as ex:
+                logger.error("Error executing SMS dispatch to %s: %s", phone, str(ex))
+
         return notification
 
     async def get_user_notifications(
@@ -477,6 +584,9 @@ class NotificationService:
             wa = user_rec.get("whatsapp", {})
             wa_status = wa.get("status", NotificationDeliveryStatus.NOT_CONFIGURED.value)
 
+            sms = user_rec.get("sms", {})
+            sms_status = sms.get("status", NotificationDeliveryStatus.NOT_CONFIGURED.value)
+
             deep_link_obj = None
             if doc.get("deep_link"):
                 deep_link_obj = NotificationDeepLink(**doc["deep_link"])
@@ -497,6 +607,7 @@ class NotificationService:
                     in_app_status=NotificationDeliveryStatus(in_app_status),
                     read_at=read_at,
                     whatsapp_status=NotificationDeliveryStatus(wa_status),
+                    sms_status=NotificationDeliveryStatus(sms_status),
                 )
             )
 
@@ -689,16 +800,206 @@ class NotificationService:
             "messages_received": processed_messages,
         }
 
+    async def process_twilio_status_callback(
+        self, form_data: Dict[str, Any], db: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Process Twilio WhatsApp and SMS delivery status callbacks
+        (queued, accepted, sending, sent, delivered, undelivered, read, failed).
+        Updates notification_deliveries idempotently using the Twilio Message SID.
+        Does NOT duplicate delivery records or trigger citizen reporting.
+        """
+        database = self._get_db(db)
+        message_sid = form_data.get("MessageSid") or form_data.get("SmsSid")
+        raw_status = (form_data.get("MessageStatus") or form_data.get("SmsStatus") or "").lower().strip()
+        error_code = form_data.get("ErrorCode")
+        error_message = form_data.get("ErrorMessage")
+
+        if not message_sid or not raw_status:
+            return {"status": "ignored", "reason": "missing_message_sid_or_status"}
+
+        status_map = {
+            "queued": NotificationDeliveryStatus.QUEUED,
+            "accepted": NotificationDeliveryStatus.QUEUED,
+            "sending": NotificationDeliveryStatus.SENDING,
+            "sent": NotificationDeliveryStatus.SENT,
+            "delivered": NotificationDeliveryStatus.DELIVERED,
+            "read": NotificationDeliveryStatus.READ,
+            "failed": NotificationDeliveryStatus.FAILED,
+            "undelivered": NotificationDeliveryStatus.UNDELIVERED,
+        }
+        new_status = status_map.get(raw_status)
+        if not new_status:
+            return {"status": "ignored", "reason": f"unrecognized_status_{raw_status}"}
+
+        now_dt = datetime.now(timezone.utc)
+
+        # 1. Try updating WhatsApp match first
+        update_wa_doc: Dict[str, Any] = {
+            "recipients.$.whatsapp.status": new_status.value,
+        }
+        if new_status == NotificationDeliveryStatus.QUEUED:
+            update_wa_doc["recipients.$.whatsapp.queued_at"] = now_dt
+        elif new_status == NotificationDeliveryStatus.SENT:
+            update_wa_doc["recipients.$.whatsapp.sent_at"] = now_dt
+        elif new_status == NotificationDeliveryStatus.DELIVERED:
+            update_wa_doc["recipients.$.whatsapp.delivered_at"] = now_dt
+        elif new_status == NotificationDeliveryStatus.READ:
+            update_wa_doc["recipients.$.whatsapp.read_at"] = now_dt
+        elif new_status in (NotificationDeliveryStatus.FAILED, NotificationDeliveryStatus.UNDELIVERED):
+            update_wa_doc["recipients.$.whatsapp.failed_at"] = now_dt
+            if error_code:
+                update_wa_doc["recipients.$.whatsapp.error_code"] = str(error_code)
+            if error_message:
+                update_wa_doc["recipients.$.whatsapp.error_message"] = str(error_message)
+
+        res = await database["notifications"].update_one(
+            {"recipients.whatsapp.provider_message_id": message_sid},
+            {"$set": update_wa_doc},
+        )
+
+        matched_channel = "whatsapp" if res.matched_count > 0 else None
+
+        # 2. If not matched on WhatsApp, try updating SMS match
+        if not matched_channel:
+            update_sms_doc: Dict[str, Any] = {
+                "recipients.$.sms.status": new_status.value,
+            }
+            if new_status == NotificationDeliveryStatus.QUEUED:
+                update_sms_doc["recipients.$.sms.queued_at"] = now_dt
+            elif new_status in (NotificationDeliveryStatus.SENT, NotificationDeliveryStatus.SENDING):
+                update_sms_doc["recipients.$.sms.sent_at"] = now_dt
+            elif new_status == NotificationDeliveryStatus.DELIVERED:
+                update_sms_doc["recipients.$.sms.delivered_at"] = now_dt
+            elif new_status in (NotificationDeliveryStatus.FAILED, NotificationDeliveryStatus.UNDELIVERED):
+                update_sms_doc["recipients.$.sms.failed_at"] = now_dt
+                if error_code:
+                    update_sms_doc["recipients.$.sms.error_code"] = str(error_code)
+                if error_message:
+                    update_sms_doc["recipients.$.sms.error_message"] = str(error_message)
+
+            res = await database["notifications"].update_one(
+                {"recipients.sms.provider_message_id": message_sid},
+                {"$set": update_sms_doc},
+            )
+            if res.matched_count > 0:
+                matched_channel = "sms"
+
+        if not matched_channel:
+            logger.warning("Twilio callback: No notification found for MessageSid=%s", message_sid)
+            return {"status": "not_found", "message_sid": message_sid}
+
+        logger.info(
+            "Twilio %s status callback processed: MessageSid=%s status=%s modified=%d",
+            matched_channel.upper(),
+            message_sid,
+            new_status.value,
+            res.modified_count,
+        )
+
+        return {
+            "status": "processed",
+            "channel": matched_channel,
+            "message_sid": message_sid,
+            "delivery_status": new_status.value,
+            "updated": res.modified_count > 0,
+        }
+
+    async def process_twilio_inbound(
+        self, form_data: Dict[str, Any], db: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Acknowledge inbound WhatsApp messages from Twilio Sandbox.
+        IMPORTANT: Inbound WhatsApp messages NEVER trigger citizen emergency reporting.
+        Citizen emergency reporting remains strictly on /report-emergency.
+        """
+        message_sid = form_data.get("MessageSid")
+        from_number = form_data.get("From") or ""
+        body = form_data.get("Body") or ""
+
+        masked_phone = f"{from_number[:5]}***{from_number[-3:]}" if len(from_number) >= 8 else "***"
+        logger.info(
+            "Twilio inbound WhatsApp message acknowledged from %s (sid=%s, chars=%d). Emergency reporting is not accepted via WhatsApp.",
+            masked_phone,
+            message_sid,
+            len(body),
+        )
+
+        return {
+            "status": "acknowledged",
+            "message_sid": message_sid,
+            "notice": "WhatsApp is for notification delivery only. Citizen reporting must use /report-emergency.",
+        }
+
+    async def process_twilio_inbound_sms(
+        self, form_data: Dict[str, Any], db: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Acknowledge inbound SMS messages from Twilio.
+        IMPORTANT: Inbound SMS messages NEVER trigger citizen emergency reporting.
+        Citizen emergency reporting remains strictly on /report-emergency.
+        """
+        message_sid = form_data.get("MessageSid") or form_data.get("SmsSid")
+        from_number = form_data.get("From") or ""
+        body = form_data.get("Body") or ""
+
+        masked_phone = f"{from_number[:5]}***{from_number[-3:]}" if len(from_number) >= 8 else "***"
+        logger.info(
+            "Twilio inbound SMS message acknowledged from %s (sid=%s, chars=%d). Emergency reporting is not accepted via SMS.",
+            masked_phone,
+            message_sid,
+            len(body),
+        )
+
+        return {
+            "status": "acknowledged",
+            "message_sid": message_sid,
+            "notice": "SMS is an outbound notification channel only. Citizen reporting must use /report-emergency.",
+        }
+
     def get_channel_status(self) -> Dict[str, Any]:
         """Check operational and configuration status of delivery channels."""
-        wa_configured = self.provider.is_configured()
-        has_verify_token = bool(settings.whatsapp_verify_token)
-        has_phone_id = bool(settings.WHATSAPP_PHONE_NUMBER_ID)
-        has_access_token = bool(settings.WHATSAPP_ACCESS_TOKEN)
+        provider = self.provider
+        wa_configured = provider.is_configured()
+        provider_name = (settings.WHATSAPP_PROVIDER or "twilio").strip().lower()
 
         status_val = "OPERATIONAL" if wa_configured else "NOT_CONFIGURED"
-        if has_access_token and not has_phone_id:
-            status_val = "ERROR"
+
+        wa_info: Dict[str, Any] = {
+            "channel": NotificationChannel.WHATSAPP.value,
+            "status": status_val,
+            "configured": wa_configured,
+            "provider": provider_name,
+            "enabled": settings.TWILIO_WHATSAPP_ENABLED if provider_name == "twilio" else bool(settings.WHATSAPP_ACCESS_TOKEN),
+        }
+        if not wa_configured:
+            wa_info["reason"] = "NOT_CONFIGURED"
+
+        if provider_name == "twilio":
+            wa_info["from_number"] = settings.TWILIO_WHATSAPP_FROM
+            wa_info["status_callback_configured"] = bool(settings.TWILIO_WHATSAPP_STATUS_CALLBACK_URL)
+        else:
+            wa_info["webhook_configured"] = bool(settings.whatsapp_verify_token)
+            wa_info["api_version"] = settings.WHATSAPP_API_VERSION
+
+        # SMS Channel Status
+        sms_prov = self.sms_provider
+        sms_configured = sms_prov.is_configured()
+        sms_provider_name = (settings.SMS_PROVIDER or "disabled").strip().lower()
+        sms_status_val = "OPERATIONAL" if sms_configured else "NOT_CONFIGURED"
+
+        sms_info: Dict[str, Any] = {
+            "channel": NotificationChannel.SMS.value,
+            "status": sms_status_val,
+            "configured": sms_configured,
+            "provider": sms_provider_name,
+            "enabled": settings.TWILIO_SMS_ENABLED if sms_provider_name == "twilio" else False,
+        }
+        if not sms_configured:
+            sms_info["reason"] = "NOT_CONFIGURED"
+        if sms_provider_name == "twilio":
+            sms_info["from_number"] = settings.TWILIO_SMS_FROM
+            sms_info["status_callback_configured"] = bool(settings.TWILIO_SMS_STATUS_CALLBACK_URL)
 
         return {
             "in_app": {
@@ -706,14 +1007,8 @@ class NotificationService:
                 "status": "OPERATIONAL",
                 "configured": True,
             },
-            "whatsapp": {
-                "channel": NotificationChannel.WHATSAPP.value,
-                "status": status_val,
-                "configured": wa_configured,
-                "provider": settings.WHATSAPP_PROVIDER,
-                "webhook_configured": has_verify_token,
-                "api_version": settings.WHATSAPP_API_VERSION,
-            },
+            "whatsapp": wa_info,
+            "sms": sms_info,
         }
 
 
@@ -726,3 +1021,5 @@ def get_notification_service() -> NotificationService:
     if _notification_service is None:
         _notification_service = NotificationService()
     return _notification_service
+
+
