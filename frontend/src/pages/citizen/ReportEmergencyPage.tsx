@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TacticalBackground } from '../../components/layout/TacticalBackground';
 import { EmergencyEmblem } from '../../components/common/EmergencyEmblem';
@@ -35,8 +35,6 @@ import {
   Bell,
   BellRing,
   BellOff,
-  Layers,
-  Globe,
 } from 'lucide-react';
 import type {
   EmergencyType,
@@ -54,8 +52,6 @@ import {
   registerServiceWorkerAndSubscribe,
   getComprehensivePushState,
   sendTestPushNotification,
-  isSecureContextEnvironment,
-  isWebPushSupported,
 } from '../../utils/webPush';
 import type { WebPushState } from '../../types';
 
@@ -468,7 +464,7 @@ export const ReportEmergencyPage: React.FC = () => {
           if (e.latLng) {
             const lat = e.latLng.lat();
             const lon = e.latLng.lng();
-            marker.setPosition({ lat, lon });
+            marker.setPosition({ lat, lng: lon });
             marker.setMap(map);
             setLatitude(lat.toFixed(6));
             setLongitude(lon.toFixed(6));
