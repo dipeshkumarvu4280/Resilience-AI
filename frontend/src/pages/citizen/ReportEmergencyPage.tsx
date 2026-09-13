@@ -192,6 +192,16 @@ export const ReportEmergencyPage: React.FC = () => {
 
   useEffect(() => {
     const checkState = async () => {
+      if (
+        submittedReport?.report_id &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        await registerServiceWorkerAndSubscribe(
+          submittedReport.report_id,
+          submittedReport.safety_guidance_token
+        ).catch(() => {});
+      }
       const s = await getComprehensivePushState();
       setComprehensivePushState(s);
     };
@@ -227,6 +237,16 @@ export const ReportEmergencyPage: React.FC = () => {
     setTestPushSending(true);
     setTestPushMessage(null);
     try {
+      if (
+        submittedReport?.report_id &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        await registerServiceWorkerAndSubscribe(
+          submittedReport.report_id,
+          submittedReport.safety_guidance_token
+        ).catch(() => {});
+      }
       const res = await sendTestPushNotification(submittedReport?.report_id);
       setTestPushMessage(res.message);
     } catch (err: any) {
@@ -656,6 +676,20 @@ export const ReportEmergencyPage: React.FC = () => {
         setError(null);
         setSubmittedReport(canonicalResponse);
         sessionStorage.setItem('resilience_active_citizen_report', JSON.stringify(canonicalResponse));
+
+        // Deterministic push association if notification permission is already granted
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && canonicalResponse.report_id) {
+          try {
+            console.log(`[WebPush] Auto-associating subscription with report_id=${canonicalResponse.report_id}`);
+            await registerServiceWorkerAndSubscribe(
+              canonicalResponse.report_id,
+              canonicalResponse.safety_guidance_token
+            );
+          } catch (pushErr) {
+            console.warn('[WebPush] Auto-association on submission notice:', pushErr);
+          }
+        }
+
         navigate(`/report-emergency?id=${canonicalResponse.report_id}`, { replace: true });
         if (typeof window !== 'undefined') {
           window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -99,6 +99,9 @@ export const SafetyGuidancePage: React.FC = () => {
       if (res.success && res.guidance) {
         setGuidance(res.guidance);
         setSelectedAlternative(null);
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && res.guidance.report_id) {
+          registerServiceWorkerAndSubscribe(res.guidance.report_id).catch(() => {});
+        }
       } else {
         setError(res.message || 'Safety guidance record not found.');
       }
@@ -181,6 +184,9 @@ export const SafetyGuidancePage: React.FC = () => {
     setTestPushSending(true);
     setTestPushMessage(null);
     try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && guidance?.report_id) {
+        await registerServiceWorkerAndSubscribe(guidance.report_id).catch(() => {});
+      }
       const res = await sendTestPushNotification(guidance?.report_id);
       setTestPushMessage(res.message);
     } catch (err: any) {
