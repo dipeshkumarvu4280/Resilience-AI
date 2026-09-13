@@ -2882,4 +2882,159 @@ export interface ResourceBottlenecksResponse {
   total_pages: number;
 }
 
+// -------------------------------------------------------------
+// Phase 1 Predictive Intelligence & Escalation Forecasting Types
+// -------------------------------------------------------------
+
+export type PredictiveDataSufficiency =
+  | 'SUFFICIENT_DATA'
+  | 'LIMITED_DATA'
+  | 'INSUFFICIENT_DATA'
+  | 'NO_DATA';
+
+export type EscalationRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type TrendDirection = 'RISING' | 'STABLE' | 'FALLING' | 'UNKNOWN';
+
+export interface PredictiveFeature {
+  name: string;
+  value: number;
+  source: string;
+  time_window: string;
+  data_points: number;
+  raw_records?: number | null;
+  aggregation_method?: string | null;
+  metadata?: Record<string, any>;
+  description?: string | null;
+}
+
+export interface PredictiveEvidenceItem {
+  source_type: string;
+  source_id: string;
+  timestamp: string;
+  contribution: string;
+  weight: number;
+}
+
+export interface WeatherForecastPeriod {
+  horizon_minutes: number;
+  forecast_timestamp: string;
+  precipitation_mm?: number | null;
+  precipitation_probability?: number | null;
+  temperature_c?: number | null;
+  wind_speed_mps?: number | null;
+  wind_gust_mps?: number | null;
+  condition?: string | null;
+}
+
+export interface WeatherEvidence {
+  provider: string;
+  fetched_at: string;
+  observation_timestamp?: string | null;
+  latitude: number;
+  longitude: number;
+  temperature_c?: number | null;
+  precipitation_mm?: number | null;
+  precipitation_probability?: number | null;
+  humidity_percent?: number | null;
+  wind_speed_mps?: number | null;
+  wind_gust_mps?: number | null;
+  condition?: string | null;
+  forecast_periods: WeatherForecastPeriod[];
+  data_status: 'FRESH' | 'STALE' | 'UNAVAILABLE' | 'ERROR';
+  freshness_seconds?: number | null;
+  error_detail?: string | null;
+}
+
+export interface ForecastHorizonResult {
+  horizon_minutes: number;
+  risk_level: EscalationRiskLevel;
+  risk_score: number;
+  raw_score?: number | null;
+  projected_score?: number | null;
+  is_capped?: boolean;
+  ceiling_threshold?: number;
+  trend: TrendDirection;
+  data_status: PredictiveDataSufficiency;
+  confidence_score: number;
+  confidence_label: string;
+  contributing_factors: string[];
+  limitations: string[];
+  weather_contribution?: number | null;
+  sensor_contribution?: number | null;
+  incident_contribution?: number | null;
+  field_contribution?: number | null;
+  monitoring_contribution?: number | null;
+  task_contribution?: number | null;
+  weather_forecast?: WeatherForecastPeriod | null;
+}
+
+export interface IncidentPredictionResponse {
+  incident_id: string;
+  incident_title?: string | null;
+  emergency_type?: string | null;
+  prediction_status: string;
+  data_status: PredictiveDataSufficiency;
+  current_authoritative_severity: string;
+  current_severity_score: number;
+  is_officer_override: boolean;
+  forecast: ForecastHorizonResult;
+  horizons: Record<string, ForecastHorizonResult>;
+  all_horizons_capped?: boolean;
+  independent_sources_count?: number;
+  independent_physical_sources_count?: number;
+  external_context_sources_count?: number;
+  weather?: WeatherEvidence | null;
+  features: PredictiveFeature[];
+  missing_features: string[];
+  evidence: PredictiveEvidenceItem[];
+  data_points_used: Record<string, number>;
+  historical_window_minutes: number;
+  model: Record<string, string>;
+  limitations: string[];
+  advisory_notice: string;
+  generated_at: string;
+}
+
+export interface PredictiveTrendPoint {
+  time_label: string;
+  minutes_from_now: number;
+  risk_score: number;
+  risk_level: string;
+  is_forecast: boolean;
+  data_status: string;
+}
+
+export interface PredictiveTrendResponse {
+  incident_id: string;
+  data_status: string;
+  trend_direction: string;
+  historical_window_minutes: number;
+  timeline_points: PredictiveTrendPoint[];
+  summary: string;
+  generated_at: string;
+}
+
+export interface PredictiveFeaturesResponse {
+  incident_id: string;
+  historical_window_minutes: number;
+  data_status: string;
+  features: PredictiveFeature[];
+  missing_features: string[];
+  total_records_evaluated: number;
+  records_by_source: Record<string, number>;
+  generated_at: string;
+}
+
+export interface PredictiveHealthResponse {
+  status: string;
+  engine_version: string;
+  model_name: string;
+  supported_horizons_minutes: number[];
+  default_window_minutes: number;
+  zero_dummy_data_enforced: boolean;
+  advisory_mode_enforced: boolean;
+  checked_at: string;
+}
+
 

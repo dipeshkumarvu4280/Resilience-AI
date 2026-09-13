@@ -116,7 +116,7 @@ async def test_system_status_truthful_and_unseeded(client: AsyncClient):
 
 
 @pytest.mark.anyio
-async def test_fresh_startup_zero_demo_resources():
+async def test_fresh_startup_zero_demo_resources(client: AsyncClient):
     """
     Verify that in the test database, zero demo resources, incidents, or dummy collections are populated.
     """

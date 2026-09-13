@@ -568,3 +568,153 @@ def test_no_hardcoded_recipients_or_senders():
     # Check that no real personal phone numbers or auth tokens are hardcoded
     assert "super_secret" not in content
     assert "AC" + "0" * 32 not in content
+
+
+# -------------------------------------------------------------
+# 26. Trial Template Mode Parameter Construction
+# -------------------------------------------------------------
+@pytest.mark.anyio
+async def test_trial_template_mode_sends_predefined_template():
+    provider = TwilioSmsProvider(
+        account_sid="ACtest_sid_12345",
+        auth_token="secret_token",
+        from_number="+14155552671",
+        enabled=True,
+        mode="trial_template",
+        trial_template="sms_internal_alerts",
+    )
+
+    captured_data = {}
+
+    async def mock_post(url, data=None, auth=None):
+        nonlocal captured_data
+        captured_data = data
+        return httpx.Response(
+            201,
+            json={"sid": "SMtest_trial_1234", "status": "queued"},
+            request=httpx.Request("POST", url),
+        )
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_post):
+        res = await provider.send_sms("+919801338643", "Arbitrary emergency alert text that should NOT be sent directly in trial mode")
+        assert res.status == NotificationDeliveryStatus.QUEUED
+        assert res.provider_message_id == "SMtest_trial_1234"
+        assert captured_data.get("Body") == "sms_internal_alerts"
+        assert captured_data.get("To") == "+919801338643"
+        assert captured_data.get("From") == "+14155552671"
+
+
+# -------------------------------------------------------------
+# 27. Custom Mode Preserves Arbitrary Body for Production
+# -------------------------------------------------------------
+@pytest.mark.anyio
+async def test_custom_mode_sends_application_body():
+    provider = TwilioSmsProvider(
+        account_sid="ACtest_sid_12345",
+        auth_token="secret_token",
+        from_number="+14155552671",
+        enabled=True,
+        mode="custom",
+    )
+
+    captured_data = {}
+
+    async def mock_post(url, data=None, auth=None):
+        nonlocal captured_data
+        captured_data = data
+        return httpx.Response(
+            201,
+            json={"sid": "SMtest_custom_1234", "status": "queued"},
+            request=httpx.Request("POST", url),
+        )
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_post):
+        custom_text = "RESILIENCE [CRITICAL]: Evacuate sector 9 immediately."
+        res = await provider.send_sms("+919801338643", custom_text)
+        assert res.status == NotificationDeliveryStatus.QUEUED
+        assert res.provider_message_id == "SMtest_custom_1234"
+        assert captured_data.get("Body") == custom_text
+
+
+# -------------------------------------------------------------
+# 28. Error Classification: Unverified Recipient (572002)
+# -------------------------------------------------------------
+@pytest.mark.anyio
+async def test_error_classification_unverified_recipient_572002():
+    provider = TwilioSmsProvider(
+        account_sid="ACtest_sid_12345",
+        auth_token="secret_token",
+        from_number="+14155552671",
+        enabled=True,
+    )
+
+    mock_resp = httpx.Response(
+        400,
+        json={
+            "code": 572002,
+            "message": "No Twilio trial phone number is assigned for messaging to this destination number. Please add the 'to' number as a verified recipient.",
+        },
+        request=httpx.Request("POST", "https://api.twilio.com/2010-04-01/Accounts/ACtest_sid_12345/Messages.json"),
+    )
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
+        res = await provider.send_sms("+919999999001", "Alert")
+        assert res.status == NotificationDeliveryStatus.FAILED
+        assert res.error_code == "572002"
+        assert res.provider_message_id is None
+        assert "verified recipient" in res.error_message.lower()
+
+
+# -------------------------------------------------------------
+# 29. Error Classification: Invalid Template (572006)
+# -------------------------------------------------------------
+@pytest.mark.anyio
+async def test_error_classification_invalid_template_572006():
+    provider = TwilioSmsProvider(
+        account_sid="ACtest_sid_12345",
+        auth_token="secret_token",
+        from_number="+14155552671",
+        enabled=True,
+    )
+
+    mock_resp = httpx.Response(
+        400,
+        json={
+            "code": 572006,
+            "message": "Invalid template name. Trial accounts can only use predefined SMS templates.",
+        },
+        request=httpx.Request("POST", "https://api.twilio.com/2010-04-01/Accounts/ACtest_sid_12345/Messages.json"),
+    )
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
+        res = await provider.send_sms("+919801338643", "Alert")
+        assert res.status == NotificationDeliveryStatus.FAILED
+        assert res.error_code == "572006"
+        assert res.provider_message_id is None
+        assert "invalid template" in res.error_message.lower()
+
+
+# -------------------------------------------------------------
+# 30. Missing Message SID on 200/201 Rejected
+# -------------------------------------------------------------
+@pytest.mark.anyio
+async def test_missing_message_sid_on_201_response():
+    provider = TwilioSmsProvider(
+        account_sid="ACtest_sid_12345",
+        auth_token="secret_token",
+        from_number="+14155552671",
+        enabled=True,
+    )
+
+    mock_resp = httpx.Response(
+        201,
+        json={"status": "queued"},  # missing 'sid'
+        request=httpx.Request("POST", "https://api.twilio.com/2010-04-01/Accounts/ACtest_sid_12345/Messages.json"),
+    )
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
+        res = await provider.send_sms("+919801338643", "Alert")
+        assert res.status == NotificationDeliveryStatus.FAILED
+        assert res.error_code == "NO_MESSAGE_SID"
+        assert res.provider_message_id is None
+

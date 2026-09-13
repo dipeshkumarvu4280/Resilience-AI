@@ -250,11 +250,28 @@ export const ReportEmergencyPage: React.FC = () => {
           if (data && data.report_id) {
             setSubmittedReport(data);
             sessionStorage.setItem('resilience_active_citizen_report', JSON.stringify(data));
+            setError(null);
           }
         })
         .catch((err: unknown) => {
           console.warn('Could not fetch report receipt:', err);
-          setError('Could not retrieve requested report receipt. You can create a new emergency report below.');
+          // Only show error if no matching submitted report exists in memory or session
+          const cached = sessionStorage.getItem('resilience_active_citizen_report');
+          let hasLocalMatch = false;
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (parsed?.report_id === viewReportId) {
+                setSubmittedReport(parsed);
+                hasLocalMatch = true;
+              }
+            } catch (e) {
+              console.warn('Cached report parse error:', e);
+            }
+          }
+          if (!hasLocalMatch) {
+            setError('Could not retrieve requested report receipt. You can create a new emergency report below.');
+          }
         });
     } else if (!isExplicitNew) {
       const cached = sessionStorage.getItem('resilience_active_citizen_report');
@@ -461,14 +478,33 @@ export const ReportEmergencyPage: React.FC = () => {
       };
 
       const response = await createEmergencyReport(payload);
-      setSubmittedReport(response);
-      sessionStorage.setItem('resilience_active_citizen_report', JSON.stringify(response));
-      navigate(`/report-emergency?id=${response.report_id}`, { replace: true });
-      if (typeof window !== 'undefined') {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (response && (response.report_id || response.id)) {
+        const canonicalResponse = {
+          ...response,
+          report_id: response.report_id || response.id,
+        };
+        setError(null);
+        setSubmittedReport(canonicalResponse);
+        sessionStorage.setItem('resilience_active_citizen_report', JSON.stringify(canonicalResponse));
+        navigate(`/report-emergency?id=${canonicalResponse.report_id}`, { replace: true });
+        if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      } else {
+        throw new Error('Invalid response structure received from server.');
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to submit emergency report. Please try again.');
+      console.error('[REPORT-SUBMIT-ERROR]', err);
+      const backendError = err.response?.data?.detail;
+      if (backendError) {
+        setError(typeof backendError === 'string' ? backendError : JSON.stringify(backendError));
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Submission status could not be confirmed immediately due to network latency. Please check your active report status before resubmitting.');
+      } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setError('Network connection offline. Please check your internet connection before submitting.');
+      } else {
+        setError(err.message || 'Failed to submit emergency report. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, system, users, citizen, officer, resources, needs_allocations, situations, monitoring, simulation, notifications, field_operations, analytics, healthcare, map, sensors, safety_guidance
+from app.api.v1.endpoints import auth, system, users, citizen, officer, resources, needs_allocations, situations, monitoring, simulation, notifications, field_operations, analytics, healthcare, map, sensors, safety_guidance, predictive
 
 api_router = APIRouter()
 
@@ -30,6 +30,8 @@ api_router.include_router(analytics.router, prefix="/officer/analytics", tags=["
 api_router.include_router(analytics.router, prefix="/admin/analytics", tags=["Emergency Intelligence & Analytics"])
 api_router.include_router(sensors.router, prefix="/sensors", tags=["IoT Sensor Intake & Real-Time Monitoring"])
 api_router.include_router(sensors.router, prefix="/officer/sensors", tags=["IoT Sensor Intake & Real-Time Monitoring"])
+api_router.include_router(predictive.router, prefix="/officer/predictive", tags=["Predictive Intelligence & Escalation Forecasting"])
+api_router.include_router(predictive.router, prefix="/predictive", tags=["Predictive Intelligence & Escalation Forecasting"])
 
 
 

@@ -78,6 +78,8 @@ class TwilioSmsProvider(SmsProviderInterface):
     """
     Official Twilio SMS Provider.
     Implements Twilio REST Messages API asynchronously via httpx.
+    Supports both 'trial_template' mode (Twilio predefined trial templates like 'sms_internal_alerts')
+    and 'custom' mode (free-form body for production/paid accounts).
     Normalizes numbers to E.164 format (+<digits>) and maps Twilio delivery states.
     Never exposes credentials or Auth Token in errors or logs.
     """
@@ -89,12 +91,16 @@ class TwilioSmsProvider(SmsProviderInterface):
         from_number: Optional[str] = None,
         enabled: Optional[bool] = None,
         status_callback_url: Optional[str] = None,
+        mode: Optional[str] = None,
+        trial_template: Optional[str] = None,
     ):
         self.account_sid = account_sid if account_sid is not None else settings.TWILIO_ACCOUNT_SID
         self.auth_token = auth_token if auth_token is not None else settings.TWILIO_AUTH_TOKEN
         self.from_number = from_number if from_number is not None else settings.TWILIO_SMS_FROM
         self.enabled = enabled if enabled is not None else settings.TWILIO_SMS_ENABLED
         self.status_callback_url = status_callback_url if status_callback_url is not None else settings.TWILIO_SMS_STATUS_CALLBACK_URL
+        self.mode = (mode if mode is not None else getattr(settings, "TWILIO_SMS_MODE", "trial_template")).lower().strip()
+        self.trial_template = trial_template if trial_template is not None else getattr(settings, "TWILIO_SMS_TRIAL_TEMPLATE", "sms_internal_alerts")
         self.api_base_url = "https://api.twilio.com/2010-04-01"
 
     def is_configured(self) -> bool:
@@ -127,15 +133,26 @@ class TwilioSmsProvider(SmsProviderInterface):
         # Normalize sender number
         from_norm = normalize_phone_e164(self.from_number) or self.from_number
 
+        # Trial Template Adapter:
+        # In 'trial_template' mode, use Twilio's approved predefined template keyword.
+        # In 'custom' mode, send the full application-generated emergency text.
+        if self.mode == "trial_template":
+            body_to_send = self.trial_template
+        else:
+            body_to_send = message
+
         url = f"{self.api_base_url}/Accounts/{self.account_sid}/Messages.json"
 
         form_data = {
             "From": from_norm,
             "To": norm_recipient,
-            "Body": message,
+            "Body": body_to_send,
         }
         if self.status_callback_url:
             form_data["StatusCallback"] = self.status_callback_url
+
+        masked_to = f"{norm_recipient[:3]}***{norm_recipient[-3:]}" if len(norm_recipient) >= 6 else "***"
+        masked_sid = f"...{self.account_sid[-4:]}" if self.account_sid else "None"
 
         try:
             async with httpx.AsyncClient(timeout=12.0) as client:
@@ -150,6 +167,14 @@ class TwilioSmsProvider(SmsProviderInterface):
                     msg_sid = res_data.get("sid")
                     twilio_status = (res_data.get("status") or "queued").lower()
 
+                    if not msg_sid or not str(msg_sid).startswith("SM"):
+                        logger.error("Twilio accepted response missing valid Message SID: %s", res_data)
+                        return SmsDeliveryResult(
+                            status=NotificationDeliveryStatus.FAILED,
+                            error_code="NO_MESSAGE_SID",
+                            error_message="Twilio response did not contain a valid Message SID.",
+                        )
+
                     status_map = {
                         "queued": NotificationDeliveryStatus.QUEUED,
                         "accepted": NotificationDeliveryStatus.QUEUED,
@@ -161,6 +186,14 @@ class TwilioSmsProvider(SmsProviderInterface):
                     }
                     mapped_status = status_map.get(twilio_status, NotificationDeliveryStatus.QUEUED)
 
+                    logger.info(
+                        "Twilio SMS accepted: to=%s msg_sid=%s status=%s mode=%s",
+                        masked_to,
+                        msg_sid,
+                        mapped_status.value,
+                        self.mode,
+                    )
+
                     return SmsDeliveryResult(
                         status=mapped_status,
                         provider_message_id=msg_sid,
@@ -168,13 +201,34 @@ class TwilioSmsProvider(SmsProviderInterface):
                 else:
                     try:
                         err_json = response.json()
-                        err_code = str(err_json.get("code") or response.status_code)
+                        raw_code = str(err_json.get("code") or response.status_code)
                         err_msg = err_json.get("message") or response.text
                     except Exception:
-                        err_code = str(response.status_code)
+                        raw_code = str(response.status_code)
                         err_msg = f"HTTP {response.status_code}: {response.text[:200]}"
 
-                    logger.warning("Twilio SMS API error: code=%s msg=%s", err_code, err_msg)
+                    # Precise Error Classification
+                    if raw_code == "572002" or "verified recipient" in err_msg.lower():
+                        err_code = "572002"
+                        err_classification = "TRIAL_RECIPIENT_NOT_VERIFIED"
+                    elif raw_code == "572006" or "invalid template" in err_msg.lower():
+                        err_code = "572006"
+                        err_classification = "TRIAL_TEMPLATE_REJECTED"
+                    elif 400 <= response.status_code < 500:
+                        err_code = raw_code
+                        err_classification = "PROVIDER_REJECTED"
+                    else:
+                        err_code = raw_code
+                        err_classification = "PROVIDER_ERROR"
+
+                    logger.warning(
+                        "Twilio SMS API rejection [%s]: to=%s code=%s msg=%s (Account: %s)",
+                        err_classification,
+                        masked_to,
+                        err_code,
+                        err_msg,
+                        masked_sid,
+                    )
                     return SmsDeliveryResult(
                         status=NotificationDeliveryStatus.FAILED,
                         error_code=err_code,
@@ -182,7 +236,7 @@ class TwilioSmsProvider(SmsProviderInterface):
                     )
 
         except httpx.TimeoutException:
-            logger.warning("Twilio SMS API request timed out.")
+            logger.warning("Twilio SMS API request timed out for to=%s", masked_to)
             return SmsDeliveryResult(
                 status=NotificationDeliveryStatus.FAILED,
                 error_code="TIMEOUT",

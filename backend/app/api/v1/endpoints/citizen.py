@@ -53,7 +53,7 @@ from app.services.evidence_service import EvidenceValidationService
 from app.services.evidence_verification_service import EvidenceVerificationService
 from app.services.corroboration_service import EvidenceCorroborationService
 from app.services.gemini_service import GeminiIntelligenceService
-from app.models.llm_extraction import LLMExtractionResult
+from app.models.llm_extraction import LLMExtractionResult, ExtractionStatus
 from app.services.timeline import record_timeline_event
 
 
@@ -467,7 +467,78 @@ async def create_emergency_report(
             detail="Submission rate limit reached. Please wait a moment before submitting another report.",
         )
 
-    # 7. Duplicate Report Detection (Never silently deletes or blocks; flags for review)
+    # 7. Duplicate Report Detection & Idempotency Protection
+    # If the exact same report was already created within 15 minutes, return the existing genuine report to prevent duplicates
+    dup_window_start = now - timedelta(minutes=15)
+    existing_duplicate = await db["citizen_reports"].find_one({
+        "created_at": {"$gte": dup_window_start},
+        "citizen_phone": normalized_phone,
+        "emergency_type": payload.emergency_type.value,
+        "$or": [
+            {
+                "location.latitude": {"$gte": lat - 0.002, "$lte": lat + 0.002},
+                "location.longitude": {"$gte": lon - 0.002, "$lte": lon + 0.002},
+            },
+            {"description": description},
+        ],
+    }, sort=[("created_at", -1)])
+
+    if existing_duplicate:
+        dup_report_id = existing_duplicate["report_id"]
+        logger.info(f"[IDEMPOTENT RETRY] Returning existing genuine report {dup_report_id} for phone {normalized_phone[:3]}***")
+        
+        guidance_doc = await db["citizen_safety_guidance"].find_one({
+            "report_id": dup_report_id,
+            "status": "ACTIVE",
+        })
+        guidance_id_val = guidance_doc.get("guidance_id") if guidance_doc else None
+        guidance_token_val = guidance_doc.get("secure_access_token") if guidance_doc else None
+
+        raw_impact = existing_duplicate.get("citizen_impact_level", CitizenImpactLevel.NOT_SURE.value)
+        try:
+            impact_obj = CitizenImpactLevel(raw_impact)
+        except Exception:
+            impact_obj = CitizenImpactLevel.NOT_SURE
+
+        raw_trust = existing_duplicate.get("trust_state", ReportTrustState.NORMAL.value)
+        try:
+            trust_obj = ReportTrustState(raw_trust)
+        except Exception:
+            trust_obj = ReportTrustState.NORMAL
+
+        evidence_doc = existing_duplicate.get("evidence")
+        evidence_obj = None
+        if isinstance(evidence_doc, dict):
+            try:
+                evidence_obj = LiveEvidenceRecord(**evidence_doc)
+            except Exception:
+                pass
+
+        return EmergencyReportResponse(
+            report_id=dup_report_id,
+            citizen_id=existing_duplicate["citizen_id"],
+            citizen_name=existing_duplicate["citizen_name"],
+            citizen_phone=existing_duplicate["citizen_phone"],
+            emergency_type=EmergencyType(existing_duplicate["emergency_type"]),
+            citizen_impact_level=impact_obj,
+            description=existing_duplicate["description"],
+            location=LocationPayload(**existing_duplicate["location"]),
+            media=[MediaAttachment(**m) for m in existing_duplicate.get("media", [])],
+            evidence=evidence_obj,
+            status=ReportStatus(existing_duplicate.get("status", ReportStatus.RECEIVED.value)),
+            phone_verified=existing_duplicate.get("phone_verified", False),
+            possible_duplicate=True,
+            risk_level=existing_duplicate.get("risk_level", "LOW"),
+            risk_reasons=existing_duplicate.get("risk_reasons", []),
+            trust_state=trust_obj,
+            trust_signals=existing_duplicate.get("trust_signals", []),
+            situation_id=existing_duplicate.get("situation_id"),
+            safety_guidance_id=guidance_id_val,
+            safety_guidance_token=guidance_token_val,
+            created_at=existing_duplicate["created_at"],
+            updated_at=existing_duplicate.get("updated_at", existing_duplicate["created_at"]),
+        )
+
     is_duplicate, duplicate_id = await detect_duplicate_report(
         db, payload.emergency_type.value, normalized_phone, lat, lon, now
     )
@@ -729,6 +800,29 @@ async def create_emergency_report(
     except Exception as mon_err:
         logger.warning(f"Monitoring event recording notice for report {report_id}: {mon_err}")
 
+    # Phase 1: Live Citizen Safety Guidance Synthesis
+    guidance_id_val = None
+    guidance_token_val = None
+    try:
+        from app.services.agents.adapters.safety_guidance_agent import SafetyGuidanceAgent
+        guidance = await SafetyGuidanceAgent.generate_safety_guidance(
+            report_id=report_id,
+            db=db,
+            force_refresh=False,
+        )
+        guidance_id_val = guidance.guidance_id
+        guidance_token_val = guidance.secure_access_token
+    except Exception as g_err:
+        logger.warning(f"Safety guidance generation notice for report {report_id}: {g_err}")
+
+    # Canonical Public Safety Guidelines URL
+    from app.core.config import settings
+    frontend_base = getattr(settings, "FRONTEND_BASE_URL", "https://resilience-ai-pied.vercel.app").rstrip("/")
+    if guidance_token_val:
+        safety_guidelines_url = f"{frontend_base}/safety-guidance/{guidance_token_val}"
+    else:
+        safety_guidelines_url = f"{frontend_base}/safety-guidance"
+
     # Phase 7: Event-Driven Notification Dispatch
     try:
         from app.services.notification import get_notification_service
@@ -739,6 +833,8 @@ async def create_emergency_report(
             notif_sev = NotificationSeverity.CRITICAL
         
         notif_service = get_notification_service()
+
+        # 1. Operational Notification to Emergency Officers and Admins
         await notif_service.dispatch_event(
             category=NotificationCategory.CITIZEN_REPORT,
             event_type="REPORT_CREATED",
@@ -758,6 +854,43 @@ async def create_emergency_report(
                 "location_name": resolved_address,
                 "citizen_name": full_name,
             },
+            db=db,
+        )
+
+        # 2. Citizen Reporter Safety Guidance Notification (In-App + SMS with Twilio Trial compatibility)
+        reporter_title = "Emergency Report Received — Safety Guidance"
+        reporter_message = (
+            f"Your emergency report has been received.\n"
+            f"Please follow the safety guidance while responders review your report.\n\n"
+            f"View Safety Guidelines: {safety_guidelines_url}"
+        )
+
+        await notif_service.dispatch_event(
+            category=NotificationCategory.CITIZEN_REPORT,
+            event_type="REPORTER_SAFETY_GUIDANCE",
+            severity=notif_sev,
+            title=reporter_title,
+            message=reporter_message,
+            entity_type="CITIZEN_REPORT",
+            entity_id=report_id,
+            situation_id=sit_id,
+            view_hint="citizen",
+            target_user_ids=[normalized_phone],
+            material_state={
+                "report_id": report_id,
+                "action": "SAFETY_GUIDANCE_REPORT_RECEIVED",
+            },
+            metadata={
+                "report_id": report_id,
+                "safety_guidelines_url": safety_guidelines_url,
+                "safety_guidance_token": guidance_token_val,
+                "safety_guidance_id": guidance_id_val,
+                "emergency_type": payload.emergency_type.value,
+                "recipient_role": "CITIZEN",
+                "citizen_phone": normalized_phone,
+                "citizen_name": full_name,
+            },
+            db=db,
         )
     except Exception as notif_err:
         logger.warning(f"Notification dispatch notice for report {report_id}: {notif_err}")
@@ -767,21 +900,6 @@ async def create_emergency_report(
         f"lat={lat}, lon={lon}, phone={normalized_phone[:3]}***, verified={phone_verified}, "
         f"duplicate={is_duplicate}, risk={risk_level}, trust={trust_state.value}"
     )
-
-    # Phase 1: Live Citizen Safety Guidance Synthesis
-    guidance_id_val = None
-    guidance_token_val = None
-    try:
-        from app.services.agents.adapters.safety_guidance_agent import SafetyGuidanceAgent
-        guidance = await SafetyGuidanceAgent.generate_safety_guidance(
-            report_id=report_id,
-            db=db,
-            force_refresh=False,
-        )
-        guidance_id_val = guidance.guidance_id
-        guidance_token_val = guidance.secure_access_token
-    except Exception as g_err:
-        logger.warning(f"Safety guidance generation notice for report {report_id}: {g_err}")
 
     return EmergencyReportResponse(
         report_id=report_id,
@@ -945,7 +1063,8 @@ async def get_emergency_report(
             pass
 
     # Auto-refresh failed or missing LLM extraction via TextAnalysisRouter (triggers OpenAI fallback)
-    if (not llm_ext_obj or llm_ext_obj.status in [ExtractionStatus.FAILED, ExtractionStatus.UNAVAILABLE]) and report_doc.get("description"):
+    status_val = str(getattr(llm_ext_obj, "status", "")).upper()
+    if (not llm_ext_obj or status_val in ["FAILED", "UNAVAILABLE", ExtractionStatus.FAILED.value, ExtractionStatus.UNAVAILABLE.value]) and report_doc.get("description"):
         try:
             from app.services.text_analysis_router import TextAnalysisRouter
             router = TextAnalysisRouter.get_instance()
@@ -959,7 +1078,8 @@ async def get_emergency_report(
                 },
                 report_id=report_doc["report_id"],
             )
-            if new_llm and new_llm.status == ExtractionStatus.SUCCESS:
+            new_status = str(getattr(new_llm, "status", "")).upper()
+            if new_llm and (new_llm.status == ExtractionStatus.SUCCESS or new_status == "SUCCESS"):
                 llm_ext_obj = new_llm
                 await db["citizen_reports"].update_one(
                     {"_id": report_doc["_id"]},

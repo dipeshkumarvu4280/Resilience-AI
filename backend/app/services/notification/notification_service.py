@@ -112,6 +112,13 @@ class NotificationService:
         phone = None
         if user_doc:
             phone = user_doc.get("phone") or user_doc.get("phone_number")
+        else:
+            # Check citizen_identities collection or direct phone number string
+            c_doc = await database["citizen_identities"].find_one({"$or": query_or})
+            if c_doc:
+                phone = c_doc.get("phone")
+            elif isinstance(user_id, str) and any(c.isdigit() for c in user_id) and len("".join(c for c in user_id if c.isdigit())) >= 7:
+                phone = user_id
 
         pref = NotificationPreference(
             preference_id=f"pref_{uuid.uuid4().hex[:12]}",
@@ -205,9 +212,17 @@ class NotificationService:
                 if tid not in resolved_map and tid not in exclude_set:
                     pref_doc = await database["notification_preferences"].find_one({"user_id": tid})
                     phone = pref_doc.get("phone_number") if pref_doc else None
+                    role = None
+                    c_doc = await database["citizen_identities"].find_one({"$or": [{"citizen_id": tid}, {"phone": tid}]})
+                    if c_doc:
+                        phone = c_doc.get("phone") or phone
+                        role = UserRole.CITIZEN.value
+                    elif not phone and isinstance(tid, str) and any(c.isdigit() for c in tid) and len("".join(c for c in tid if c.isdigit())) >= 7:
+                        phone = tid
+                        role = UserRole.CITIZEN.value
                     resolved_map[tid] = {
                         "user_id": tid,
-                        "role": None,
+                        "role": role,
                         "phone_number": phone,
                     }
 
@@ -404,8 +419,10 @@ class NotificationService:
 
                 # Severity Escalation Policy & Preferences for SMS
                 should_attempt_sms = False
-                if severity == NotificationSeverity.CRITICAL:
-                    should_attempt_sms = bool(phone and (pref.sms_enabled or pref.notify_critical))
+                if event_type == "REPORTER_SAFETY_GUIDANCE" or role == UserRole.CITIZEN.value or role == "CITIZEN":
+                    should_attempt_sms = bool(phone)
+                elif severity == NotificationSeverity.CRITICAL:
+                    should_attempt_sms = bool(phone and pref.sms_enabled and pref.notify_critical)
                 elif severity == NotificationSeverity.HIGH:
                     should_attempt_sms = bool(phone and pref.sms_enabled and pref.notify_high)
                 elif severity == NotificationSeverity.MEDIUM:
@@ -558,12 +575,25 @@ class NotificationService:
     ) -> List[NotificationUserView]:
         """Fetch notifications scoped to the given user."""
         database = self._get_db(db)
-        query: Dict[str, Any] = {"recipients.user_id": user_id}
+        query: Dict[str, Any] = {}
+
+        if unread_only:
+            query["recipients"] = {
+                "$elemMatch": {
+                    "user_id": user_id,
+                    "in_app.status": {"$ne": NotificationDeliveryStatus.READ.value},
+                    "in_app.read_at": None,
+                }
+            }
+        else:
+            query["recipients.user_id"] = user_id
 
         if category:
-            query["category"] = category.value
+            cat_val = category.value if isinstance(category, NotificationCategory) else str(category)
+            query["category"] = cat_val
         if severity:
-            query["severity"] = severity.value
+            sev_val = severity.value if isinstance(severity, NotificationSeverity) else str(severity)
+            query["severity"] = sev_val
 
         cursor = database["notifications"].find(query).sort("created_at", -1).skip(skip).limit(limit)
         results: List[NotificationUserView] = []
@@ -577,8 +607,9 @@ class NotificationService:
             in_app = user_rec.get("in_app", {})
             in_app_status = in_app.get("status", NotificationDeliveryStatus.DELIVERED.value)
             read_at = in_app.get("read_at")
+            is_read_val = bool(in_app_status == NotificationDeliveryStatus.READ.value or read_at is not None)
 
-            if unread_only and (in_app_status == NotificationDeliveryStatus.READ.value or read_at is not None):
+            if unread_only and is_read_val:
                 continue
 
             wa = user_rec.get("whatsapp", {})
@@ -591,13 +622,28 @@ class NotificationService:
             if doc.get("deep_link"):
                 deep_link_obj = NotificationDeepLink(**doc["deep_link"])
 
+            # Robust enum conversions
+            cat_raw = doc.get("category")
+            try:
+                cat_enum = NotificationCategory(cat_raw) if cat_raw else NotificationCategory.SYSTEM_BROADCAST
+            except Exception:
+                cat_enum = NotificationCategory.SYSTEM_BROADCAST
+
+            sev_raw = doc.get("severity")
+            try:
+                sev_enum = NotificationSeverity(sev_raw) if sev_raw else NotificationSeverity.LOW
+            except Exception:
+                sev_enum = NotificationSeverity.LOW
+
             results.append(
                 NotificationUserView(
                     notification_id=doc["notification_id"],
+                    id=doc["notification_id"],
+                    is_read=is_read_val,
                     event_id=doc.get("event_id"),
-                    category=NotificationCategory(doc["category"]),
+                    category=cat_enum,
                     event_type=doc.get("event_type", ""),
-                    severity=NotificationSeverity(doc.get("severity", "LOW")),
+                    severity=sev_enum,
                     title=doc.get("title", ""),
                     message=doc.get("message", ""),
                     deep_link=deep_link_obj,

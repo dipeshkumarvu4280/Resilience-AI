@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   Shield,
   AlertTriangle,
@@ -43,6 +43,8 @@ declare global {
 
 export const SafetyGuidancePage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
+  const [searchParams] = useSearchParams();
+  const effectiveToken = token || searchParams.get('token');
   const [guidance, setGuidance] = useState<CitizenSafetyGuidance | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<VerifiedDestination | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -76,10 +78,10 @@ export const SafetyGuidancePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (token) {
-      fetchGuidance(token);
+    if (effectiveToken) {
+      fetchGuidance(effectiveToken);
     } else {
-      setError('Invalid or missing safety guidance token.');
+      setError('Please open your personalized safety guidance link from your emergency report or notification.');
       setLoading(false);
     }
     const checkState = async () => {
@@ -87,7 +89,7 @@ export const SafetyGuidancePage: React.FC = () => {
       setPushState(s);
     };
     checkState();
-  }, [token]);
+  }, [effectiveToken]);
 
   const fetchGuidance = async (authToken: string) => {
     try {

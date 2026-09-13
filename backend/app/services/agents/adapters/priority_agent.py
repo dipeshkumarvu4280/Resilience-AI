@@ -186,7 +186,23 @@ class PriorityAgent(BaseAgent):
                 elif freshness == "STALE":
                     warnings.append("Evidence was captured > 30m before intake.")
 
-            # 6. Highest-Impact Reconciliation Logic
+            # 6. Process Advisory Predictive Signals (Phase 1 Predictive Analysis)
+            # Predictive signals provide advisory trend context; they NEVER overwrite authoritative severity.
+            predictive_data = params.get("predictive_signal") or params.get("predictive_intelligence")
+            predicted_escalation_risk = None
+            prediction_confidence = None
+            prediction_trend = None
+            if isinstance(predictive_data, dict):
+                forecast_obj = predictive_data.get("forecast") or {}
+                predicted_escalation_risk = forecast_obj.get("risk_level") or predictive_data.get("risk_level")
+                prediction_confidence = forecast_obj.get("confidence_score") or predictive_data.get("confidence_score")
+                prediction_trend = forecast_obj.get("trend") or predictive_data.get("trend")
+                if predicted_escalation_risk:
+                    evidence.append(
+                        f"Advisory Predictive Signal: Escalation Risk {predicted_escalation_risk} (Trend: {prediction_trend or 'STABLE'}, Confidence: {prediction_confidence or 'N/A'})."
+                    )
+
+            # 7. Highest-Impact Reconciliation Logic
             # If critical life-safety claims were reported (e.g. trapped/vulnerable) but not seen on camera,
             # we PRESERVE them under the Highest-Impact safety rule.
             if unverified_claims:
@@ -199,29 +215,36 @@ class PriorityAgent(BaseAgent):
                 f"Key factors: {factor_summary}."
             )
 
+            structured_out = {
+                "severity_level": severity_level.value,
+                "severity_score": severity_score,
+                "hazard_category": hazard_cat.value,
+                "is_officer_override": False,
+                "effective_priority": severity_level.value,
+                "current_priority": severity_level.value,
+                "predicted_escalation_risk": predicted_escalation_risk,
+                "prediction_confidence": prediction_confidence,
+                "prediction_trend": prediction_trend,
+                "evidence_aware": visual_evidence_present,
+                "text_image_consistency": consistency_label,
+                "evidence_factors": evidence_factors,
+                "unverified_claims": unverified_claims,
+                "uncertainties": uncertainties,
+            }
+
             return AgentResult(
                 agent_name=self.name,
                 run_id=run_id,
                 status=AgentRunStatus.COMPLETED,
                 recommendation=recommendation,
-                structured_output={
-                    "severity_level": severity_level.value,
-                    "severity_score": severity_score,
-                    "hazard_category": hazard_cat.value,
-                    "is_officer_override": False,
-                    "effective_priority": severity_level.value,
-                    "evidence_aware": visual_evidence_present,
-                    "text_image_consistency": consistency_label,
-                    "evidence_factors": evidence_factors,
-                    "unverified_claims": unverified_claims,
-                    "uncertainties": uncertainties,
-                },
+                structured_output=structured_out,
                 confidence=confidence,
                 evidence=evidence,
                 warnings=warnings,
                 constraints=constraints,
                 generated_at=datetime.now(timezone.utc),
             )
+
 
         except Exception as e:
             # Controlled fallback on internal exception

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     GEOCODING_USER_AGENT: str = "RESILIENCE-Emergency-Response-Platform/1.0 (contact@resilience.civil-defense.org)"
     GEOCODING_TIMEOUT_SECONDS: float = 5.0
     
+    # Frontend Public URL
+    FRONTEND_BASE_URL: str = "https://resilience-ai-pied.vercel.app"
+    
     # CORS
     BACKEND_CORS_ORIGINS: Union[List[str], str] = [
         "https://resilience-ai-pied.vercel.app",
@@ -183,6 +186,8 @@ class Settings(BaseSettings):
     TWILIO_SMS_ENABLED: bool = False
     TWILIO_SMS_FROM: Optional[str] = None
     TWILIO_SMS_STATUS_CALLBACK_URL: Optional[str] = None
+    TWILIO_SMS_MODE: str = "trial_template"  # "trial_template" or "custom"
+    TWILIO_SMS_TRIAL_TEMPLATE: str = "sms_internal_alerts"  # Predefined Twilio trial template: sms_internal_alerts / sms_account_alerts
 
     @property
     def whatsapp_verify_token(self) -> str:
@@ -192,6 +197,12 @@ class Settings(BaseSettings):
     VAPID_PUBLIC_KEY: Optional[str] = None
     VAPID_PRIVATE_KEY: Optional[str] = None
     VAPID_CLAIMS_EMAIL: str = "mailto:emergency-alerts@resilience-civildefense.org"
+    
+    # Real Weather Intelligence Provider
+    WEATHER_PROVIDER: str = "open_meteo"  # "open_meteo", "google", "disabled"
+    WEATHER_API_KEY: Optional[str] = None
+    WEATHER_TIMEOUT_SECONDS: float = 4.0
+    WEATHER_CACHE_TTL_SECONDS: int = 600
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

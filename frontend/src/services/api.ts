@@ -81,7 +81,7 @@ export const getApiBaseUrl = (): string => {
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: 30000,
+  timeout: 45000,
 });
 
 // Request interceptor to attach JWT token from localStorage

@@ -29,6 +29,8 @@ import {
   Users,
   Building2,
   Lock,
+  TrendingUp,
+  CloudSun,
 } from 'lucide-react';
 
 interface Stage {
@@ -48,7 +50,7 @@ export const HowItWorksInteractive: React.FC = () => {
   const [replanningSimState, setReplanningSimState] = useState<'initial' | 'blocked' | 'revised'>('initial');
 
   const categories = [
-    { id: 'all', label: 'Complete 14-Stage Journey' },
+    { id: 'all', label: 'Complete 15-Stage Journey' },
     { id: 'ingestion', label: '1. Citizen Intake & Guidance' },
     { id: 'intelligence', label: '2. AI & Officer Verification' },
     { id: 'coordination', label: '3. 9-Agent Coordination' },
@@ -670,10 +672,115 @@ export const HowItWorksInteractive: React.FC = () => {
       ),
     },
 
-    // STAGE 12: DYNAMIC REPLANNING
+    // STAGE 12: PREDICTIVE ANALYSIS
     {
       id: '12',
       stepNum: '12',
+      title: 'Predictive Analysis',
+      shortDesc: 'Analyze recent incident, sensor, and weather trends to estimate short-term escalation risk.',
+      tag: 'ADVISORY FORECAST',
+      tagColor: 'bg-blue-50 text-blue-700 border-blue-200',
+      category: 'execution',
+      content: (
+        <div className="space-y-4">
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+            Analyze recent incident, sensor, and environmental trends to estimate how emergency conditions
+            may evolve over the next 15, 30, and 60 minutes.
+          </p>
+
+          <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-slate-900">
+                <TrendingUp className="w-4 h-4 text-blue-600" />
+                <span>PREDICTIVE INTELLIGENCE & SHORT-TERM RISK ESTIMATION</span>
+              </div>
+              <span className="font-mono text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded shadow-2xs">
+                ADVISORY ONLY • NON-MUTATING
+              </span>
+            </div>
+
+            {/* Core Analytical Inputs & Capabilities */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-sans">
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-300 hover:shadow-xs transition-all duration-200">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
+                  <Radio className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Sensor Telemetry & Incident History</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Evaluates genuine time-series sensor observations and recent report frequency to detect rising, stable, or receding trends.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-300 hover:shadow-xs transition-all duration-200">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
+                  <CloudSun className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Live Environmental & Weather Context</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Correlates local precipitation observations, wind velocity, and soil saturation as external risk factors.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-300 hover:shadow-xs transition-all duration-200">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
+                  <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>15 / 30 / 60-Minute Horizon Forecasts</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Computes multi-horizon escalation estimates and surfaces explainable contributing factor weights.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-300 hover:shadow-xs transition-all duration-200">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Confidence & Data-Sufficiency Guardrails</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Explicitly indicates data completeness; falls back to UNCERTAIN when sensor or weather evidence is insufficient.
+                </p>
+              </div>
+            </div>
+
+            {/* Workflow Progression: Live Monitoring -> Predictive -> Impact -> Dynamic Replanning */}
+            <div className="p-3 rounded-lg bg-blue-50/70 border border-blue-200 space-y-1.5">
+              <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-900">
+                Decision Support Workflow Progression
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-1.5 text-[11px] font-mono text-slate-800">
+                <span className="p-1.5 rounded bg-white border border-blue-200 text-center w-full sm:w-auto font-semibold">
+                  1. Predictive Analysis detects potential change
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 text-blue-600 shrink-0 rotate-90 sm:rotate-0" />
+                <span className="p-1.5 rounded bg-white border border-blue-200 text-center w-full sm:w-auto font-semibold">
+                  2. Impact Analysis evaluates operational risk
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 text-blue-600 shrink-0 rotate-90 sm:rotate-0" />
+                <span className="p-1.5 rounded bg-white border border-blue-200 text-center w-full sm:w-auto font-semibold">
+                  3. Dynamic Replanning prepares revised plan
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 text-blue-600 shrink-0 rotate-90 sm:rotate-0" />
+                <span className="p-1.5 rounded bg-white border border-red-200 text-red-800 text-center w-full sm:w-auto font-bold">
+                  4. Officer reviews & approves
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2 p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs shadow-xs">
+            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span>
+              <strong>Decision Support Guardrail:</strong> Predictive analysis provides advisory risk estimates and never automatically overwrites authoritative incident severity, dispatches resources, triggers public alerts, or autonomously executes a replan. The Emergency Officer remains the authoritative decision-maker.
+            </span>
+          </div>
+        </div>
+      ),
+    },
+
+    // STAGE 13: DYNAMIC REPLANNING
+    {
+      id: '13',
+      stepNum: '13',
       title: 'Adapt When Conditions Change',
       shortDesc: 'Automated impact analysis and allocation diffs when roads or warehouses become blocked.',
       tag: 'DYNAMIC REPLANNING',
@@ -759,10 +866,10 @@ export const HowItWorksInteractive: React.FC = () => {
       ),
     },
 
-    // STAGE 13: WHAT-IF SIMULATION
+    // STAGE 14: WHAT-IF SIMULATION
     {
-      id: '13',
-      stepNum: '13',
+      id: '14',
+      stepNum: '14',
       title: 'Plan for What Could Happen (What-If)',
       shortDesc: 'Sandbox simulation engine for capacity stress-testing without touching live operational state.',
       tag: 'WHAT-IF SIMULATION',
@@ -796,10 +903,10 @@ export const HowItWorksInteractive: React.FC = () => {
       ),
     },
 
-    // STAGE 14: RESOLUTION & AUDIT TRAIL
+    // STAGE 15: RESOLUTION & AUDIT TRAIL
     {
-      id: '14',
-      stepNum: '14',
+      id: '15',
+      stepNum: '15',
       title: 'Resolve & Learn',
       shortDesc: 'End-to-end immutability with verified closure metrics and post-incident analytics.',
       tag: 'GOVERNANCE & AUDIT',
@@ -964,7 +1071,7 @@ export const HowItWorksInteractive: React.FC = () => {
                 </span>
                 <div>
                   <div className="font-mono text-[10px] uppercase font-bold text-slate-400">
-                    STAGE {activeStage.stepNum} OF 14
+                    STAGE {activeStage.stepNum} OF 15
                   </div>
                   <h3 className="text-lg sm:text-xl font-black font-sans text-slate-900 uppercase">
                     {activeStage.title}
@@ -994,11 +1101,11 @@ export const HowItWorksInteractive: React.FC = () => {
               </button>
 
               <div className="text-[11px] font-mono text-slate-400">
-                Step {parseInt(activeStage.stepNum, 10)} / 14
+                Step {parseInt(activeStage.stepNum, 10)} / 15
               </div>
 
               <button
-                disabled={activeStageId === '14'}
+                disabled={activeStageId === '15'}
                 onClick={() => {
                   const currentIdx = stages.findIndex((s) => s.id === activeStageId);
                   if (currentIdx < stages.length - 1) setActiveStageId(stages[currentIdx + 1].id);

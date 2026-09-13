@@ -27,8 +27,8 @@ export const notificationApi = {
    * Fetch unread in-app notification count for the current user.
    */
   async getUnreadCount(): Promise<number> {
-    const response = await api.get<{ unread_count: number }>('/notifications/unread-count');
-    return response.data.unread_count;
+    const response = await api.get<{ unread_count?: number; count?: number }>('/notifications/unread-count');
+    return response.data.count ?? response.data.unread_count ?? 0;
   },
 
   /**

@@ -38,6 +38,7 @@ import {
 } from '../../services/situationsApi';
 import { IncidentEvolutionTimeline } from '../common/IncidentEvolutionTimeline';
 import { SubmitFieldVerificationModal } from '../volunteer/SubmitFieldVerificationModal';
+import { PredictiveIntelligencePanel } from './PredictiveIntelligencePanel';
 
 interface SituationDetailsModalProps {
   situationId: string;
@@ -496,6 +497,9 @@ export const SituationDetailsModal: React.FC<SituationDetailsModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Advisory Predictive Intelligence Panel (Phase 1) */}
+              <PredictiveIntelligencePanel incidentId={situationId} />
 
               {/* Evidence & Operational Sources Console */}
               <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">

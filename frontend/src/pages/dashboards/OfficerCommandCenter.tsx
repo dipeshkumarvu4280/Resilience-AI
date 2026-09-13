@@ -458,8 +458,10 @@ export const OfficerCommandCenter: React.FC = () => {
           <div className="flex md:hidden items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-200 no-scrollbar touch-scroll flex-nowrap">
             {[
               { id: 'command-center', label: 'Command' },
+              { id: 'ai-intelligence', label: 'Situation Intelligence' },
               { id: 'incidents', label: 'Incidents' },
               { id: 'reports', label: 'Reports' },
+              { id: 'sensors', label: 'IoT Sensors' },
               { id: 'response-ops', label: 'Field Operations' },
               { id: 'live-monitoring', label: 'Live Monitoring' },
               { id: 'simulation', label: 'What-If Simulation' },
@@ -1255,6 +1257,24 @@ export const OfficerCommandCenter: React.FC = () => {
                   No audit events recorded yet.
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB: SITUATION INTELLIGENCE & INCIDENT CLUSTERS */}
+          {/* ========================================================================= */}
+          {(activeTab === 'ai-intelligence' || activeTab === 'situations') && (
+            <div key={refreshKey} className="space-y-6">
+              <SituationListPanel
+                onSelectSituation={(situationId) => setSelectedSituationId(situationId)}
+                onOpenCoordination={(sit) =>
+                  setSelectedCoordinationSituation({
+                    id: sit.situation_id,
+                    title: sit.title,
+                    emergencyType: sit.emergency_type,
+                  })
+                }
+              />
             </div>
           )}
 

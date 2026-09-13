@@ -226,6 +226,43 @@ async def receive_twilio_sms_inbound(
 # User-Scoped Notification Endpoints
 # =======================================================
 
+@router.get("", response_model=List[NotificationUserView], summary="Get User Notifications")
+@router.get("/", response_model=List[NotificationUserView], include_in_schema=False)
+async def list_notifications(
+    category: Optional[NotificationCategory] = Query(None, description="Filter by notification category"),
+    severity: Optional[NotificationSeverity] = Query(None, description="Filter by notification severity"),
+    unread_only: bool = Query(False, description="Filter to unread notifications only"),
+    limit: int = Query(50, ge=1, le=200, description="Max notifications to return"),
+    skip: int = Query(0, ge=0, description="Pagination offset"),
+    current_user: UserResponse = Depends(get_current_user),
+    service: NotificationService = Depends(get_notification_service),
+) -> List[NotificationUserView]:
+    """
+    Fetch notifications scoped to the authenticated user from authoritative MongoDB state.
+    Supports optional category, severity, unread filtering, and pagination.
+    """
+    return await service.get_user_notifications(
+        user_id=current_user.id,
+        category=category,
+        severity=severity,
+        unread_only=unread_only,
+        limit=limit,
+        skip=skip,
+    )
+
+
+@router.get("/unread-count", summary="Get Unread Notification Count")
+async def get_unread_count(
+    current_user: UserResponse = Depends(get_current_user),
+    service: NotificationService = Depends(get_notification_service),
+) -> Dict[str, int]:
+    """
+    Fetch real unread in-app notification count for the authenticated user from authoritative MongoDB state.
+    """
+    count = await service.get_unread_count(user_id=current_user.id)
+    return {"count": count, "unread_count": count}
+
+
 @router.get("/channels/status", summary="Get Notification Channels Status")
 async def get_channel_status(
     current_user: UserResponse = Depends(get_current_user),
@@ -261,6 +298,18 @@ async def update_notification_preferences(
     return await service.update_user_preferences(user_id=current_user.id, update=update_data)
 
 
+@router.post("/read-all")
+async def mark_all_notifications_read(
+    current_user: UserResponse = Depends(get_current_user),
+    service: NotificationService = Depends(get_notification_service),
+) -> Dict[str, Any]:
+    """
+    Mark all unread in-app notifications as read for current user.
+    """
+    count = await service.mark_all_as_read(user_id=current_user.id)
+    return {"success": True, "count": count}
+
+
 @router.post("/{notification_id}/read")
 async def mark_notification_read(
     notification_id: str,
@@ -281,18 +330,6 @@ async def mark_notification_read(
                 detail="Notification not found or access denied.",
             )
     return {"success": True, "notification_id": notification_id}
-
-
-@router.post("/read-all")
-async def mark_all_notifications_read(
-    current_user: UserResponse = Depends(get_current_user),
-    service: NotificationService = Depends(get_notification_service),
-) -> Dict[str, Any]:
-    """
-    Mark all unread in-app notifications as read for current user.
-    """
-    count = await service.mark_all_as_read(user_id=current_user.id)
-    return {"success": True, "count": count}
 
 
 @router.get("/{notification_id}", response_model=NotificationUserView)

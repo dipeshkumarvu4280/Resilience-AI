@@ -40,7 +40,23 @@ export const App: React.FC = () => {
           />
           <Route path="/citizen/report" element={<ReportEmergencyPage />} />
           <Route
+            path="/safety-guidance"
+            element={
+              <ErrorBoundary fallbackTitle="Safety Guidance Unavailable" fallbackMessage="Unable to display safety guidance.">
+                <SafetyGuidancePage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
             path="/safety-guidance/:token"
+            element={
+              <ErrorBoundary fallbackTitle="Safety Guidance Unavailable" fallbackMessage="Unable to display safety guidance.">
+                <SafetyGuidancePage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/citizen/safety-guidance"
             element={
               <ErrorBoundary fallbackTitle="Safety Guidance Unavailable" fallbackMessage="Unable to display safety guidance.">
                 <SafetyGuidancePage />

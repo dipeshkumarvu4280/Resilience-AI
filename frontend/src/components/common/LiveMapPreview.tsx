@@ -242,30 +242,41 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
   return (
     <div
       tabIndex={0}
-      className={`group relative w-full rounded-2xl border border-slate-300 bg-white shadow-md shadow-slate-200/80 hover:border-red-400 hover:shadow-2xl hover:shadow-red-500/10 hover:-translate-y-1 focus-visible:outline-none focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/20 focus-within:border-red-400 focus-within:shadow-2xl focus-within:shadow-red-500/10 transition-all duration-200 ease-out overflow-hidden flex flex-col justify-between ${className}`}
+      className={`group relative w-full rounded-2xl border border-slate-300 ring-1 ring-red-500/20 bg-white shadow-[0_16px_45px_-8px_rgba(15,23,42,0.15),0_6px_22px_-3px_rgba(220,38,38,0.09)] hover:shadow-[0_24px_56px_-10px_rgba(15,23,42,0.22),0_10px_32px_-4px_rgba(220,38,38,0.16)] hover:border-red-400/80 hover:ring-red-500/35 focus-visible:outline-none focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/40 focus-within:border-slate-400 transition-all duration-250 ease-out overflow-hidden flex flex-col justify-between before:absolute before:top-0 before:left-0 before:right-0 before:h-0.5 before:bg-gradient-to-r before:from-red-500 before:via-red-600 before:to-red-500 before:z-30 ${className}`}
     >
       {/* Top Header Bar */}
-      <div className="px-4 py-3 bg-slate-50/95 border-b border-slate-300 group-hover:border-red-100 transition-colors flex items-center justify-between z-20">
-        <div className="font-sans text-xs font-bold text-slate-800 tracking-wider flex items-center gap-2">
-          <MapIcon className="w-4 h-4 text-red-600" />
-          <span className="font-mono text-[11px] font-extrabold uppercase text-slate-900">
-            PUBLIC SITUATIONAL MAP
-          </span>
-          <span className="text-slate-400 hidden sm:inline">—</span>
-          <span className="text-slate-600 font-mono text-[10px] font-semibold hidden sm:inline">
-            GOOGLE MAPS PLATFORM
-          </span>
+      <div className="px-4 py-3 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-200/90 flex flex-wrap items-center justify-between gap-2.5 z-20 transition-colors">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-red-50 border border-red-200/90 flex items-center justify-center text-[#dc2626] shrink-0 shadow-2xs">
+            <MapIcon className="w-3.5 h-3.5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-black uppercase tracking-wider text-slate-900">
+                LIVE SITUATIONAL MAP
+              </span>
+              <span className="inline-flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300/80 shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>LIVE STREAM</span>
+              </span>
+            </div>
+            <div className="text-[10px] text-slate-500 font-sans font-medium flex items-center gap-1.5 mt-0.5">
+              <span>Google Maps Platform</span>
+              <span className="text-slate-300">•</span>
+              <span className="hidden sm:inline">Real-Time Incident Spatial View</span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto sm:ml-0">
           {/* Subtle Map Type Toggle */}
-          <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 text-[10px] font-semibold">
+          <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 text-[10px] font-semibold shadow-2xs">
             <button
               type="button"
               onClick={() => handleToggleMapType('roadmap')}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-all ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-all cursor-pointer ${
                 mapType === 'roadmap'
-                  ? 'bg-slate-900 text-white font-bold'
+                  ? 'bg-slate-900 text-white font-bold shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -275,9 +286,9 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
             <button
               type="button"
               onClick={() => handleToggleMapType('satellite')}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded transition-all ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-all cursor-pointer ${
                 mapType === 'satellite'
-                  ? 'bg-blue-600 text-white font-bold'
+                  ? 'bg-blue-600 text-white font-bold shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -287,7 +298,7 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
           </div>
 
           <div
-            className={`flex items-center gap-1.5 font-mono text-[11px] font-bold px-2.5 py-0.5 rounded-md border ${
+            className={`flex items-center gap-1.5 font-mono text-[11px] font-bold px-2.5 py-1 rounded-md border shadow-2xs ${
               hotspots.length > 0
                 ? 'text-red-700 bg-red-50 border-red-200'
                 : 'text-emerald-700 bg-emerald-50 border-emerald-200'
@@ -306,13 +317,13 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
       </div>
 
       {/* Map Area */}
-      <div className="relative flex-1 min-h-[340px] sm:min-h-[390px] flex items-center justify-center overflow-hidden bg-slate-50">
+      <div className="relative flex-1 min-h-[340px] sm:min-h-[400px] lg:min-h-[440px] flex items-center justify-center overflow-hidden bg-slate-50">
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
         {/* Honest Overlay When 0 Active Hotspots */}
         {!loading && hotspots.length === 0 && (
           <div className="absolute bottom-4 left-4 right-4 sm:left-auto sm:right-4 z-10 flex items-center gap-3 p-3.5 bg-white/95 backdrop-blur-md rounded-xl border border-slate-200 shadow-lg max-w-sm">
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 flex-shrink-0 shadow-2xs">
               <Radio className="w-4 h-4" />
             </div>
             <div>
@@ -325,6 +336,17 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
             </div>
           </div>
         )}
+      </div>
+
+      {/* Bottom Status & Attribution Strip */}
+      <div className="px-4 py-2 bg-slate-50/95 border-t border-slate-200 flex items-center justify-between text-[11px] font-mono text-slate-500 z-10">
+        <div className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500/90" />
+          <span className="text-slate-700 font-bold text-[10px] tracking-wide uppercase">Incident Spatial Visualizer</span>
+        </div>
+        <div className="text-[10px] text-slate-500 font-sans font-medium">
+          Interactive • Pan & zoom to inspect operational sectors
+        </div>
       </div>
     </div>
   );

@@ -42,6 +42,7 @@ import {
 import NeedsAndAllocationsPanel from './NeedsAndAllocationsPanel';
 import { IncidentEvolutionTimeline } from '../common/IncidentEvolutionTimeline';
 import { SubmitFieldVerificationModal } from '../volunteer/SubmitFieldVerificationModal';
+import { PredictiveIntelligencePanel } from './PredictiveIntelligencePanel';
 import { loadGoogleMaps, hasGoogleMapsApiKey } from '../../utils/googleMapsLoader';
 
 const REPORT_LIGHT_STYLES: google.maps.MapTypeStyle[] = [
@@ -67,7 +68,7 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
   const [report, setReport] = useState<OfficerReportDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'incident' | 'resources' | 'evolution'>('incident');
+  const [activeTab, setActiveTab] = useState<'incident' | 'resources' | 'evolution' | 'predictive'>('incident');
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   // Actions state
@@ -638,6 +639,18 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
                 >
                   <Clock className="w-4 h-4" />
                   <span>Incident Evolution Timeline</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('predictive')}
+                  className={`pb-2.5 sm:pb-3 text-xs font-bold flex items-center gap-1.5 sm:gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'predictive'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Activity className="w-4 h-4 text-indigo-600" />
+                  <span>Predictive Intelligence (Phase 1)</span>
                 </button>
               </div>
 
@@ -1907,6 +1920,12 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
                 onReportUpdated?.();
               }}
             />
+          ) : activeTab === 'predictive' ? (
+            <div className="py-2">
+              <PredictiveIntelligencePanel
+                incidentId={report.situation_id || report.report_id}
+              />
+            </div>
           ) : (
             <IncidentEvolutionTimeline
               targetId={report.report_id}

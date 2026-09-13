@@ -108,7 +108,10 @@ class NotificationPreferenceUpdate(BaseModel):
 
 class NotificationUserView(BaseModel):
     """User-scoped representation of a notification"""
+    model_config = ConfigDict(use_enum_values=True)
     notification_id: str
+    id: Optional[str] = None
+    is_read: bool = False
     event_id: Optional[str] = None
     category: NotificationCategory
     event_type: str

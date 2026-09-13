@@ -544,7 +544,7 @@ export const LandingPage: React.FC = () => {
         </section>
 
         {/* ========================================================
-            4. HOW IT WORKS — INTERACTIVE 14-STAGE JOURNEY
+            4. HOW IT WORKS — INTERACTIVE 15-STAGE JOURNEY
             ======================================================== */}
         <HowItWorksInteractive />
 
