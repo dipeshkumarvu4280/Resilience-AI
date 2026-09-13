@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
 from app.core.config import settings
-from app.db.mongodb import connect_to_mongo, close_mongo_connection
+from app.db.mongodb import connect_to_mongo, close_mongo_connection, db_manager, get_database
 from app.api.v1.api import api_router
 
 # Configure logging
@@ -128,10 +128,27 @@ async def root():
     }
 
 
-@app.get("/health")
+@app.get("/health", tags=["System Telemetry & Health"])
+@app.head("/health", include_in_schema=False)
 async def root_health():
+    db_connected = False
+    try:
+        if db_manager.client is not None:
+            await db_manager.client.admin.command("ping")
+            db_connected = True
+        elif db_manager.db is not None:
+            await db_manager.db.command("ping")
+            db_connected = True
+        else:
+            db = get_database()
+            await db.command("ping")
+            db_connected = True
+    except Exception:
+        db_connected = False
+
     return {
         "status": "healthy",
         "system": "RESILIENCE",
+        "database": "connected" if db_connected else "disconnected",
         "phases_active": "0-9",
     }

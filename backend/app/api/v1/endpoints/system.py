@@ -11,6 +11,7 @@ router = APIRouter()
 
 
 @router.get("/health")
+@router.head("/health", include_in_schema=False)
 async def health_check(db: AsyncIOMotorDatabase = Depends(get_database)):
     db_connected = False
     try:
