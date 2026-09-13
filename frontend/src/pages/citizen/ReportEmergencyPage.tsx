@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TacticalBackground } from '../../components/layout/TacticalBackground';
 import { EmergencyEmblem } from '../../components/common/EmergencyEmblem';
 import { LiveCameraCapture } from '../../components/citizen/LiveCameraCapture';
 import { ErrorBoundary } from '../../components/common/ErrorBoundary';
+import { loadGoogleMaps, hasGoogleMapsApiKey } from '../../utils/googleMapsLoader';
 import {
   Flame,
   Waves,
@@ -34,6 +35,8 @@ import {
   Bell,
   BellRing,
   BellOff,
+  Layers,
+  Globe,
 } from 'lucide-react';
 import type {
   EmergencyType,
@@ -51,9 +54,19 @@ import {
   registerServiceWorkerAndSubscribe,
   getComprehensivePushState,
   sendTestPushNotification,
+  isSecureContextEnvironment,
+  isWebPushSupported,
 } from '../../utils/webPush';
 import type { WebPushState } from '../../types';
 
+const MAP_LIGHT_STYLES: google.maps.MapTypeStyle[] = [
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#cce5ff' }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#f8fafc' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#e2e8f0' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#f1f5f9' }] },
+  { featureType: 'administrative', elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
+];
 
 export const ReportEmergencyPage: React.FC = () => {
   console.log('[REPORT-EMERGENCY] route mounted');
@@ -73,6 +86,13 @@ export const ReportEmergencyPage: React.FC = () => {
   const [manualZone, setManualZone] = useState('');
   const [locating, setLocating] = useState(false);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
+
+  // Google Maps State & Refs
+  const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const googleMapRef = useRef<google.maps.Map | null>(null);
+  const googleInstanceRef = useRef<typeof google | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
 
 
   const inferEmergencyTypeFromText = (text: string): EmergencyType | null => {
@@ -344,6 +364,145 @@ export const ReportEmergencyPage: React.FC = () => {
     },
   ];
 
+  const createEmergencyPinSvg = () => {
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+        <defs>
+          <filter id="shadow-pin" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <circle cx="20" cy="20" r="18" fill="#dc2626" fill-opacity="0.18" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="3 2"/>
+        <path d="M20 2 C13.37 2 8 7.37 8 14 C8 23 20 36 20 36 C20 36 32 23 32 14 C32 7.37 26.63 2 20 2 Z" fill="#dc2626" stroke="#ffffff" stroke-width="2" filter="url(#shadow-pin)"/>
+        <circle cx="20" cy="14" r="5" fill="#ffffff"/>
+        <circle cx="20" cy="14" r="2.5" fill="#dc2626"/>
+      </svg>
+    `;
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+  };
+
+  const handleToggleMapType = (type: 'roadmap' | 'satellite') => {
+    setMapType(type);
+    if (googleMapRef.current) {
+      googleMapRef.current.setMapTypeId(type);
+      if (type === 'roadmap') {
+        googleMapRef.current.setOptions({ styles: MAP_LIGHT_STYLES });
+      } else {
+        googleMapRef.current.setOptions({ styles: [] });
+      }
+    }
+  };
+
+  // Google Map Initialization & Event Listeners
+  useEffect(() => {
+    let isMounted = true;
+    const initMap = async () => {
+      if (!mapContainerRef.current) return;
+      if (googleMapRef.current) return;
+      if (!hasGoogleMapsApiKey()) return;
+
+      try {
+        const googleObj = await loadGoogleMaps();
+        if (!isMounted || !mapContainerRef.current) return;
+
+        googleInstanceRef.current = googleObj;
+
+        const initialLat = parseFloat(latitude) || 16.2954;
+        const initialLng = parseFloat(longitude) || 80.6482;
+        const hasCoords = !isNaN(parseFloat(latitude)) && !isNaN(parseFloat(longitude));
+
+        const map = new googleObj.maps.Map(mapContainerRef.current, {
+          center: { lat: initialLat, lng: initialLng },
+          zoom: hasCoords ? 15 : 12,
+          minZoom: 4,
+          maxZoom: 19,
+          mapTypeId: mapType,
+          disableDefaultUI: true,
+          zoomControl: true,
+          gestureHandling: 'cooperative',
+          clickableIcons: false,
+          styles: mapType === 'roadmap' ? MAP_LIGHT_STYLES : [],
+        });
+
+        // Add draggable marker
+        const marker = new googleObj.maps.Marker({
+          map: hasCoords ? map : null,
+          position: { lat: initialLat, lng: initialLng },
+          draggable: true,
+          title: 'Emergency Epicenter',
+          icon: {
+            url: createEmergencyPinSvg(),
+            scaledSize: new googleObj.maps.Size(36, 36),
+            anchor: new googleObj.maps.Point(18, 34),
+          },
+        });
+
+        // Dragend listener
+        marker.addListener('dragend', async () => {
+          const pos = marker.getPosition();
+          if (pos) {
+            const lat = pos.lat();
+            const lon = pos.lng();
+            setLatitude(lat.toFixed(6));
+            setLongitude(lon.toFixed(6));
+            setLocationStatus('Resolving address from map pin...');
+            try {
+              const geoRes = await reverseGeocodeLocation(lat, lon);
+              if (geoRes && (geoRes.street_address || geoRes.address)) {
+                const street = geoRes.street_address || geoRes.address || '';
+                const zone = geoRes.zone_or_district || geoRes.city || geoRes.state || '';
+                setAddress(street);
+                if (zone) setManualZone(zone);
+                setLocationStatus(`📍 ${street}${zone ? ` • Zone: ${zone}` : ''}`);
+              } else {
+                setLocationStatus(`📍 Pin Position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+              }
+            } catch {
+              setLocationStatus(`📍 Pin Position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+            }
+          }
+        });
+
+        // Map Click listener to drop/move pin
+        map.addListener('click', async (e: google.maps.MapMouseEvent) => {
+          if (e.latLng) {
+            const lat = e.latLng.lat();
+            const lon = e.latLng.lng();
+            marker.setPosition({ lat, lon });
+            marker.setMap(map);
+            setLatitude(lat.toFixed(6));
+            setLongitude(lon.toFixed(6));
+            setLocationStatus('Resolving address from map pin...');
+            try {
+              const geoRes = await reverseGeocodeLocation(lat, lon);
+              if (geoRes && (geoRes.street_address || geoRes.address)) {
+                const street = geoRes.street_address || geoRes.address || '';
+                const zone = geoRes.zone_or_district || geoRes.city || geoRes.state || '';
+                setAddress(street);
+                if (zone) setManualZone(zone);
+                setLocationStatus(`📍 ${street}${zone ? ` • Zone: ${zone}` : ''}`);
+              } else {
+                setLocationStatus(`📍 Pin Position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+              }
+            } catch {
+              setLocationStatus(`📍 Pin Position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+            }
+          }
+        });
+
+        googleMapRef.current = map;
+        markerRef.current = marker;
+      } catch (err) {
+        console.warn('Could not initialize Google Map for citizen report:', err);
+      }
+    };
+
+    initMap();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Geolocation & Reverse Geocoding Handler safely invoked only on user action
   const handleGetLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -361,6 +520,14 @@ export const ReportEmergencyPage: React.FC = () => {
         const acc = Math.round(position.coords.accuracy);
         setLatitude(lat.toFixed(6));
         setLongitude(lon.toFixed(6));
+
+        if (googleMapRef.current && markerRef.current) {
+          googleMapRef.current.panTo({ lat, lng: lon });
+          googleMapRef.current.setZoom(16);
+          markerRef.current.setPosition({ lat, lng: lon });
+          markerRef.current.setMap(googleMapRef.current);
+        }
+
         setLocationStatus('Resolving address...');
 
         try {
@@ -400,6 +567,13 @@ export const ReportEmergencyPage: React.FC = () => {
     if (isNaN(latNum) || isNaN(lonNum) || latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) {
       setError('Please provide valid coordinates (Latitude -90..90, Longitude -180..180) before resolving address.');
       return;
+    }
+
+    if (googleMapRef.current && markerRef.current) {
+      googleMapRef.current.panTo({ lat: latNum, lng: lonNum });
+      googleMapRef.current.setZoom(15);
+      markerRef.current.setPosition({ lat: latNum, lng: lonNum });
+      markerRef.current.setMap(googleMapRef.current);
     }
 
     setLocating(true);
@@ -871,12 +1045,22 @@ export const ReportEmergencyPage: React.FC = () => {
               </div>
             )}
 
-            {/* Real Web Push Notification Card (7 Strict States) */}
+            {/* Real Web Push Notification Card (8 Strict States) */}
             <div className="max-w-lg mx-auto mb-8 text-left">
               {comprehensivePushState === 'NOT_SUPPORTED' ? (
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-slate-500 text-xs">
                   <BellOff className="w-4 h-4 text-slate-400 flex-shrink-0" />
                   <span>Push notifications are not supported on this browser or device.</span>
+                </div>
+              ) : comprehensivePushState === 'INSECURE_CONTEXT' ? (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-amber-900 text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold font-sans">Browser Notifications Require HTTPS</div>
+                    <p className="text-amber-800 text-[11px] mt-0.5 leading-relaxed">
+                      Browser notifications require HTTPS on this device. Emergency report submission and Safety Guidance remain fully functional.
+                    </p>
+                  </div>
                 </div>
               ) : comprehensivePushState === 'PERMISSION_DENIED' ? (
                 <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-amber-900 text-xs">
@@ -1146,7 +1330,7 @@ export const ReportEmergencyPage: React.FC = () => {
                       4. Incident Location *
                     </label>
                     <p className="text-[11px] text-slate-500">
-                      Provide GPS coordinates or address for accurate dispatch mapping.
+                      Provide GPS coordinates, pinpoint on map, or specify address for accurate dispatch mapping.
                     </p>
                   </div>
 
@@ -1155,7 +1339,7 @@ export const ReportEmergencyPage: React.FC = () => {
                       type="button"
                       onClick={handleGetLocation}
                       disabled={locating}
-                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-sans font-bold shadow-sm transition-all"
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-sans font-bold shadow-sm transition-all cursor-pointer"
                     >
                       {locating ? (
                         <>
@@ -1169,6 +1353,47 @@ export const ReportEmergencyPage: React.FC = () => {
                         </>
                       )}
                     </button>
+                  </div>
+                </div>
+
+                {/* Interactive Google Map Location Picker */}
+                <div className="relative w-full rounded-xl overflow-hidden border border-slate-300/90 bg-white shadow-2xs">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-700 font-sans font-semibold">
+                      <MapPin className="w-3.5 h-3.5 text-[#dc2626]" />
+                      <span className="text-[11px] font-mono uppercase font-bold text-slate-800">
+                        Interactive Map Pinpoint
+                      </span>
+                    </div>
+                    <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 text-[10px] font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMapType('roadmap')}
+                        className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                          mapType === 'roadmap' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Map
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMapType('satellite')}
+                        className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                          mapType === 'satellite' ? 'bg-blue-600 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Satellite
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative w-full h-[200px] sm:h-[240px] md:h-[260px] bg-slate-100">
+                    <div ref={mapContainerRef} className="w-full h-full" />
+                    <div className="absolute bottom-2 left-2 right-2 pointer-events-none">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/95 backdrop-blur-xs border border-slate-200 text-[10px] font-sans font-medium text-slate-700 shadow-xs">
+                        <span>Tap map or drag pin to position emergency epicenter</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1189,7 +1414,16 @@ export const ReportEmergencyPage: React.FC = () => {
                       step="any"
                       required
                       value={latitude}
-                      onChange={(e) => setLatitude(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setLatitude(val);
+                        const latNum = parseFloat(val);
+                        const lonNum = parseFloat(longitude);
+                        if (!isNaN(latNum) && !isNaN(lonNum) && googleMapRef.current && markerRef.current) {
+                          markerRef.current.setPosition({ lat: latNum, lng: lonNum });
+                          markerRef.current.setMap(googleMapRef.current);
+                        }
+                      }}
                       placeholder="e.g. 16.2415"
                       className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#dc2626]"
                     />
@@ -1215,7 +1449,16 @@ export const ReportEmergencyPage: React.FC = () => {
                       step="any"
                       required
                       value={longitude}
-                      onChange={(e) => setLongitude(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setLongitude(val);
+                        const latNum = parseFloat(latitude);
+                        const lonNum = parseFloat(val);
+                        if (!isNaN(latNum) && !isNaN(lonNum) && googleMapRef.current && markerRef.current) {
+                          markerRef.current.setPosition({ lat: latNum, lng: lonNum });
+                          markerRef.current.setMap(googleMapRef.current);
+                        }
+                      }}
                       placeholder="e.g. 80.6433"
                       className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#dc2626]"
                     />

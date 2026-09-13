@@ -574,6 +574,13 @@ export const SafetyGuidancePage: React.FC = () => {
           </div>
 
           {/* Web Push Alerts Opt-in Component */}
+          {pushState === 'INSECURE_CONTEXT' && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Browser notifications require HTTPS on this device</span>
+            </div>
+          )}
+
           {isWebPushSupported() && pushState === 'PERMISSION_DENIED' && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -581,7 +588,7 @@ export const SafetyGuidancePage: React.FC = () => {
             </div>
           )}
 
-          {isWebPushSupported() && pushState !== 'ACTIVE' && pushState !== 'PERMISSION_DENIED' && (
+          {isWebPushSupported() && pushState !== 'ACTIVE' && pushState !== 'PERMISSION_DENIED' && pushState !== 'INSECURE_CONTEXT' && (
             <button
               onClick={handleEnablePush}
               disabled={pushSubscribing}
@@ -995,7 +1002,7 @@ export const SafetyGuidancePage: React.FC = () => {
 
           {/* Right Column: Interactive Map & Live Corridor Routing (6 Cols) */}
           <div className="lg:col-span-6 space-y-6">
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col h-[520px] lg:h-[680px]">
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col min-h-[380px] sm:min-h-[460px] lg:h-[680px]">
               {/* Map Header & Controls */}
               <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-2">
@@ -1024,12 +1031,12 @@ export const SafetyGuidancePage: React.FC = () => {
               </div>
 
               {/* Map Canvas Container */}
-              <div className="relative flex-1 w-full h-full bg-slate-100">
-                <div ref={mapContainerRef} className="w-full h-full" />
+              <div className="relative flex-1 w-full min-h-[300px] bg-slate-100">
+                <div ref={mapContainerRef} className="w-full h-full min-h-[300px]" />
 
                 {/* Route Status Overlay */}
                 {guidance.route && guidance.route.route_status === 'RESTRICTED' ? (
-                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-amber-300 p-3 rounded-xl shadow-md text-xs space-y-1.5 max-w-sm">
+                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-amber-300 p-3 rounded-xl shadow-md text-xs space-y-1.5 max-w-sm max-w-[calc(100%-24px)]">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
                       <span className="font-bold text-slate-900 font-sans">
@@ -1044,7 +1051,7 @@ export const SafetyGuidancePage: React.FC = () => {
                     </div>
                   </div>
                 ) : guidance.route && (guidance.route.route_status === 'CALCULATED' || guidance.route.route_status === 'ROUTE_UNSAFE') ? (
-                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-slate-200 p-3 rounded-xl shadow-md text-xs space-y-1">
+                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-slate-200 p-3 rounded-xl shadow-md text-xs space-y-1 max-w-sm max-w-[calc(100%-24px)]">
                     <div className="flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full ${guidance.route.route_status === 'ROUTE_UNSAFE' ? 'bg-red-600' : 'bg-emerald-600'}`} />
                       <span className="font-bold text-slate-900 font-sans">
@@ -1054,7 +1061,7 @@ export const SafetyGuidancePage: React.FC = () => {
                     <span className="text-[10px] text-slate-500 block font-mono">{guidance.route.provider}</span>
                   </div>
                 ) : guidance.route && guidance.route.route_status === 'ROUTE_PROVIDER_ERROR' ? (
-                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-amber-300 p-3 rounded-xl shadow-md text-xs space-y-1 max-w-xs">
+                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-amber-300 p-3 rounded-xl shadow-md text-xs space-y-1 max-w-xs max-w-[calc(100%-24px)]">
                     <div className="flex items-center gap-1.5 text-amber-800 font-bold">
                       <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
                       <span>Route Provider Temporarily Unavailable</span>
@@ -1064,7 +1071,7 @@ export const SafetyGuidancePage: React.FC = () => {
                     </span>
                   </div>
                 ) : (
-                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-amber-300 p-3 rounded-xl shadow-md text-xs space-y-1 max-w-xs">
+                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md border border-amber-300 p-3 rounded-xl shadow-md text-xs space-y-1 max-w-xs max-w-[calc(100%-24px)]">
                     <div className="flex items-center gap-1.5 text-amber-800 font-bold">
                       <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
                       <span>No Driving Route Available</span>

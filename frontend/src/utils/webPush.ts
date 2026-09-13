@@ -17,6 +17,22 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
+ * Checks if current execution environment is a secure context (HTTPS, localhost, 127.0.0.1).
+ * Insecure HTTP origins on mobile browsers cannot register Service Workers or PushSubscriptions.
+ */
+export function isSecureContextEnvironment(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.isSecureContext === 'boolean') {
+    return window.isSecureContext;
+  }
+  return (
+    window.location.protocol === 'https:' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
+}
+
+/**
  * Checks if Service Workers and Push Notifications are supported by current browser.
  */
 export function isWebPushSupported(): boolean {
@@ -29,10 +45,18 @@ export function isWebPushSupported(): boolean {
 }
 
 /**
- * Evaluates the comprehensive 7-state Web Push machine for genuine emergency alert status.
+ * Evaluates the comprehensive 8-state Web Push machine for genuine emergency alert status.
  * Never claims ACTIVE unless permission is granted, PushSubscription exists, and backend persistence is confirmed.
  */
 export async function getComprehensivePushState(): Promise<WebPushState> {
+  if (typeof window === 'undefined') {
+    return 'NOT_SUPPORTED';
+  }
+
+  if (!isSecureContextEnvironment()) {
+    return 'INSECURE_CONTEXT';
+  }
+
   if (!isWebPushSupported()) {
     return 'NOT_SUPPORTED';
   }
@@ -72,8 +96,18 @@ export async function registerServiceWorkerAndSubscribe(
   reportId?: string,
   sessionId?: string
 ): Promise<{ success: boolean; subscriptionId?: string; error?: string }> {
+  if (!isSecureContextEnvironment()) {
+    return {
+      success: false,
+      error: 'Browser notifications require HTTPS on this device.',
+    };
+  }
+
   if (!isWebPushSupported()) {
-    return { success: false, error: 'Web Push notifications are not supported by this browser.' };
+    return {
+      success: false,
+      error: 'Web Push notifications are not supported by this mobile browser or device configuration.',
+    };
   }
 
   try {
