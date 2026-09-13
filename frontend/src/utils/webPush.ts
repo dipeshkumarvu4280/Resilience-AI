@@ -71,20 +71,36 @@ export async function getComprehensivePushState(): Promise<WebPushState> {
 
   // Permission is 'granted'
   try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
+    let registration: ServiceWorkerRegistration;
+    try {
+      registration = await navigator.serviceWorker.ready;
+    } catch {
+      return 'SW_REGISTRATION_FAILED';
+    }
+
+    if (!registration || !registration.pushManager) {
+      return 'SW_REGISTRATION_FAILED';
+    }
+
+    let subscription: PushSubscription | null = null;
+    try {
+      subscription = await registration.pushManager.getSubscription();
+    } catch {
+      return 'SUBSCRIPTION_FAILED';
+    }
+
     if (!subscription) {
       return 'PERMISSION_GRANTED_NO_SUBSCRIPTION';
     }
 
-    // Subscription exists
+    // Subscription exists in browser PushManager
     const lastSubId = localStorage.getItem('resilience_push_sub_id');
     if (lastSubId) {
       return 'ACTIVE';
     }
-    return 'SUBSCRIBED_NOT_PERSISTED';
+    return 'SUBSCRIPTION_NOT_PERSISTED';
   } catch {
-    return 'PERMISSION_GRANTED_NO_SUBSCRIPTION';
+    return 'SUBSCRIPTION_FAILED';
   }
 }
 
@@ -118,8 +134,16 @@ export async function registerServiceWorkerAndSubscribe(
     }
 
     // 2. Register Service Worker
-    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    await navigator.serviceWorker.ready;
+    let registration: ServiceWorkerRegistration;
+    try {
+      registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      await navigator.serviceWorker.ready;
+    } catch (swErr: any) {
+      return {
+        success: false,
+        error: `Service Worker registration failed: ${swErr.message || swErr}`,
+      };
+    }
 
     // 3. Fetch backend VAPID public key
     const vapidRes = await getVapidPublicKey();
@@ -153,10 +177,17 @@ export async function registerServiceWorkerAndSubscribe(
     }
 
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: applicationServerKey as BufferSource,
-      });
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey as BufferSource,
+        });
+      } catch (subErr: any) {
+        return {
+          success: false,
+          error: `PushManager subscription failed: ${subErr.message || subErr}`,
+        };
+      }
     }
 
     const subJson = subscription.toJSON();
@@ -165,26 +196,39 @@ export async function registerServiceWorkerAndSubscribe(
     }
 
     // 5. Send subscription to backend
-    const regRes = await subscribeWebPush({
-      endpoint: subJson.endpoint,
-      keys: {
-        p256dh: subJson.keys.p256dh,
-        auth: subJson.keys.auth,
-      },
-      user_agent: navigator.userAgent,
-      report_id: reportId,
-      session_id: sessionId,
-    });
+    try {
+      const regRes = await subscribeWebPush({
+        endpoint: subJson.endpoint,
+        keys: {
+          p256dh: subJson.keys.p256dh,
+          auth: subJson.keys.auth,
+        },
+        user_agent: navigator.userAgent,
+        report_id: reportId,
+        session_id: sessionId,
+      });
 
-    if (regRes.success && regRes.subscription_id) {
-      localStorage.setItem('resilience_push_sub_id', regRes.subscription_id);
-      localStorage.setItem('resilience_push_endpoint', subJson.endpoint);
+      if (regRes.success && regRes.subscription_id) {
+        localStorage.setItem('resilience_push_sub_id', regRes.subscription_id);
+        localStorage.setItem('resilience_push_endpoint', subJson.endpoint);
+        return {
+          success: true,
+          subscriptionId: regRes.subscription_id,
+        };
+      } else {
+        localStorage.removeItem('resilience_push_sub_id');
+        return {
+          success: false,
+          error: regRes.message || 'Subscription was rejected by backend persistence.',
+        };
+      }
+    } catch (backendErr: any) {
+      localStorage.removeItem('resilience_push_sub_id');
+      return {
+        success: false,
+        error: backendErr?.response?.data?.detail || backendErr.message || 'Failed to persist subscription on server.',
+      };
     }
-
-    return {
-      success: true,
-      subscriptionId: regRes.subscription_id,
-    };
   } catch (err: any) {
     return {
       success: false,

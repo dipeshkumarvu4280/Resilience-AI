@@ -10,10 +10,6 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  if (!event.data) {
-    return;
-  }
-
   let payload = {
     title: '🚨 RESILIENCE Emergency Alert',
     body: 'An urgent safety update is available for your location.',
@@ -23,32 +19,40 @@ self.addEventListener('push', (event) => {
     data: {},
   };
 
-  try {
-    const rawData = event.data.json();
-    payload = {
-      ...payload,
-      ...rawData,
-    };
-  } catch (err) {
-    payload.body = event.data.text() || payload.body;
+  if (event.data) {
+    try {
+      const rawData = event.data.json();
+      payload = {
+        ...payload,
+        ...rawData,
+      };
+    } catch (err) {
+      const textVal = event.data.text();
+      if (textVal) {
+        payload.body = textVal;
+      }
+    }
   }
 
+  const targetUrl = payload.url || (payload.data && payload.data.url) || '/';
+  const notifTitle = payload.title || '🚨 RESILIENCE Emergency Alert';
+
   const options = {
-    body: payload.body,
+    body: payload.body || 'Emergency update received.',
     icon: payload.icon || '/favicon.svg',
     badge: payload.badge || '/favicon.svg',
     vibrate: [200, 100, 200, 100, 300],
-    tag: payload.tag || 'emergency-alert',
+    tag: payload.tag || `alert-${Date.now()}`,
     renotify: true,
     requireInteraction: true,
     data: {
-      url: payload.url || (payload.data && payload.data.url) || '/',
-      ...payload.data,
+      url: targetUrl,
+      ...(payload.data || {}),
     },
   };
 
   event.waitUntil(
-    self.registration.showNotification(payload.title, options)
+    self.registration.showNotification(notifTitle, options)
   );
 });
 
@@ -59,13 +63,11 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a window is already open with the target URL, focus it
       for (const client of clientList) {
-        if (client.url.includes(targetUrl) && 'focus' in client) {
+        if (client.url && (client.url.includes(targetUrl) || (targetUrl === '/' && client.url.endsWith('/'))) && 'focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise open a new window
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
