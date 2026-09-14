@@ -72,13 +72,13 @@ export const EmergencyEmblem: React.FC<EmergencyEmblemProps> = ({
 
       {/* Brand Typography */}
       {showText && (
-        <div className="flex flex-col text-left">
-          <div className={`font-sans ${titleSize} tracking-widest uppercase ${
+        <div className="flex flex-col text-left min-w-0">
+          <div className={`font-sans ${titleSize} tracking-widest uppercase truncate ${
             theme === 'light' ? 'text-slate-900' : 'text-white'
           }`}>
             RESILIENCE
           </div>
-          <div className={`font-mono uppercase ${subtitleSize} ${
+          <div className={`font-mono uppercase ${subtitleSize} truncate hidden xs:block ${
             theme === 'light' ? 'text-slate-500 font-medium' : 'text-slate-400'
           }`}>
             EMERGENCY RESPONSE PLATFORM
@@ -88,4 +88,5 @@ export const EmergencyEmblem: React.FC<EmergencyEmblemProps> = ({
     </div>
   );
 };
+
 

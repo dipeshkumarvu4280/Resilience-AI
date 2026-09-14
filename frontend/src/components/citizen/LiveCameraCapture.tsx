@@ -12,6 +12,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { LiveEvidencePayload } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   type CameraFacingMode,
   getAvailableVideoInputs,
@@ -31,6 +32,7 @@ interface LiveCameraCaptureProps {
 export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
   onEvidenceCaptured,
 }) => {
+  const { t } = useLanguage();
   const [cameraOpen, setCameraOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -305,21 +307,21 @@ export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 w-full max-w-full min-w-0">
       {/* 1. Captured Photo Preview State */}
       {capturedImage && (
-        <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 shadow-xs space-y-3">
+        <div className="p-3.5 sm:p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 shadow-xs space-y-3 w-full min-w-0">
           <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider font-mono">
-                LIVE CAMERA EVIDENCE ATTACHED
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider font-mono truncate">
+                {t('report.cameraAttachedTitle', 'LIVE CAMERA EVIDENCE ATTACHED')}
               </span>
             </div>
             <button
               type="button"
               onClick={handleRemove}
-              className="text-xs text-slate-400 hover:text-red-600 font-semibold p-1 transition-colors"
+              className="text-xs text-slate-400 hover:text-red-600 font-semibold p-1 transition-colors flex-shrink-0 cursor-pointer"
               title="Remove evidence"
             >
               <X className="w-4 h-4" />
@@ -338,42 +340,42 @@ export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
               </span>
             </div>
 
-            <div className="flex-1 space-y-2 text-xs text-slate-700 w-full">
+            <div className="flex-1 space-y-2 text-xs text-slate-700 w-full min-w-0">
               <div className="flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                <span className="font-mono text-[11px]">
-                  Captured at: <strong>{captureTime?.toLocaleTimeString()}</strong> ({captureTime?.toLocaleDateString()})
+                <span className="font-mono text-[11px] truncate">
+                  {t('report.capturedAt', 'Captured at:')} <strong>{captureTime?.toLocaleTimeString()}</strong> ({captureTime?.toLocaleDateString()})
                 </span>
               </div>
 
               <div className="flex items-start gap-2">
                 <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                <div className="font-mono text-[11px]">
+                <div className="font-mono text-[11px] min-w-0">
                   {evidenceLocation ? (
                     <div>
-                      <span>Coordinates: <strong>{evidenceLocation.latitude.toFixed(5)}, {evidenceLocation.longitude.toFixed(5)}</strong></span>
+                      <span>{t('report.coordinatesLabel', 'Coordinates:')} <strong>{evidenceLocation.latitude.toFixed(5)}, {evidenceLocation.longitude.toFixed(5)}</strong></span>
                       <div className="text-[10px] text-emerald-700 font-semibold">
-                        GPS Accuracy: ±{evidenceLocation.accuracy}m
+                        {t('report.gpsAccuracyLabel', 'GPS Accuracy:')} ±{evidenceLocation.accuracy}m
                       </div>
                     </div>
                   ) : (
-                    <span className="text-slate-500 italic">GPS tagging unavailable at capture time</span>
+                    <span className="text-slate-500 italic">{t('report.gpsNotTagged', 'GPS tagging unavailable at capture time')}</span>
                   )}
                 </div>
               </div>
 
-              <div className="pt-1 flex items-center gap-2">
+              <div className="pt-1 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleRetake}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 shadow-2xs transition-all"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 shadow-2xs transition-all cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Retake Photo</span>
+                  <span>{t('report.retakePhotoBtn', 'Retake Photo')}</span>
                 </button>
                 <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Ready for Submission</span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <span>{t('report.readyStatus', 'Ready for Submission')}</span>
                 </span>
               </div>
             </div>
@@ -383,36 +385,36 @@ export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
 
       {/* 2. Active Viewfinder Live Camera State */}
       {cameraOpen && (
-        <div className="p-3 sm:p-4 rounded-xl border border-slate-300 bg-slate-900 text-white shadow-lg space-y-3">
+        <div className="p-3 sm:p-4 rounded-xl border border-slate-300 bg-slate-900 text-white shadow-lg space-y-3 w-full min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-red-400">
-                LIVE CAMERA VIEWFINDER
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping flex-shrink-0" />
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-red-400 truncate">
+                {t('report.cameraViewfinderTitle', 'LIVE CAMERA VIEWFINDER')}
               </span>
               {/* Facing mode badge */}
-              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-slate-300 border border-slate-700 uppercase">
-                {actualFacingMode === 'environment' ? 'BACK CAMERA' : 'FRONT CAMERA'}
+              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-slate-300 border border-slate-700 uppercase flex-shrink-0">
+                {actualFacingMode === 'environment' ? t('report.backCamera', 'BACK CAMERA') : t('report.frontCamera', 'FRONT CAMERA')}
               </span>
             </div>
 
             {/* GPS Tag Badge */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {gpsStatus === 'ready' && evidenceLocation && (
                 <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-500/50 text-[10px] font-mono text-emerald-300 flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-emerald-400" />
-                  <span>GPS Tag Ready (±{evidenceLocation.accuracy}m)</span>
+                  <MapPin className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                  <span>{t('report.gpsReady', 'GPS Tag Ready')} (±{evidenceLocation.accuracy}m)</span>
                 </span>
               )}
               {gpsStatus === 'locating' && (
                 <span className="px-2 py-0.5 rounded-md bg-amber-950/80 border border-amber-500/50 text-[10px] font-mono text-amber-300 flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                  <span>Acquiring GPS...</span>
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
+                  <span>{t('report.gpsLocating', 'Acquiring GPS...')}</span>
                 </span>
               )}
               {gpsStatus === 'unavailable' && (
                 <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-400">
-                  GPS Unavailable
+                  {t('report.gpsUnavailable', 'GPS Unavailable')}
                 </span>
               )}
             </div>
@@ -455,17 +457,17 @@ export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
               }}
               className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-colors min-h-[44px] cursor-pointer"
             >
-              Cancel
+              {t('report.cancelBtn', 'Cancel')}
             </button>
 
             <button
               type="button"
               onClick={takeSnapshot}
               disabled={isSwitching}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50 min-h-[44px] touch-manipulation flex-1 sm:flex-none"
+              className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50 min-h-[44px] touch-manipulation flex-1 sm:flex-none"
             >
               <Camera className="w-4 h-4" />
-              <span>Capture Live Photo</span>
+              <span>{t('report.capturePhotoBtn', 'Capture Live Photo')}</span>
             </button>
 
             {hasMultipleCameras ? (
@@ -481,7 +483,7 @@ export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
                 ) : (
                   <FlipHorizontal className="w-4 h-4" />
                 )}
-                <span className="hidden sm:inline">Switch Camera</span>
+                <span className="hidden sm:inline">{t('report.switchCameraBtn', 'Switch Camera')}</span>
               </button>
             ) : (
               <div className="w-4" />
@@ -492,17 +494,17 @@ export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
 
       {/* 3. Idle / Initial State */}
       {!cameraOpen && !capturedImage && (
-        <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-center space-y-3">
+        <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-center space-y-3 w-full min-w-0">
           <div className="flex flex-col items-center justify-center space-y-2">
             <div className="w-10 h-10 rounded-full bg-red-50 border border-red-200 text-[#dc2626] flex items-center justify-center">
               <Camera className="w-5 h-5" />
             </div>
             <div>
               <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                CAPTURE LIVE CAMERA EVIDENCE
+                {t('report.cameraIdleTitle', 'CAPTURE LIVE CAMERA EVIDENCE')}
               </h4>
               <p className="text-[11px] text-slate-500 max-w-md mx-auto mt-0.5">
-                Take a fresh live photo from your device camera to provide visual proof and geolocation verification to the Emergency Operations Center.
+                {t('report.cameraIdleDesc', 'Take a fresh live photo from your device camera to provide visual proof and geolocation verification to the Emergency Operations Center.')}
               </p>
             </div>
           </div>
@@ -532,24 +534,24 @@ export const LiveCameraCapture: React.FC<LiveCameraCaptureProps> = ({
               type="button"
               onClick={startCamera}
               disabled={capturing}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-sans font-bold shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-sans font-bold shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50 min-h-[40px]"
             >
               {capturing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-                  <span>Accessing Device Camera...</span>
+                  <span>{t('report.cameraAccessing', 'Accessing Device Camera...')}</span>
                 </>
               ) : (
                 <>
                   <Camera className="w-4 h-4 text-red-400" />
-                  <span>Open Camera to Capture</span>
+                  <span>{t('report.cameraOpenBtn', 'Open Camera to Capture')}</span>
                 </>
               )}
             </button>
           </div>
 
           <p className="text-[10px] text-slate-400 font-mono">
-            Direct browser camera capture • No gallery file uploads permitted • Non-blocking if camera is unavailable
+            {t('report.cameraFooter', 'Direct browser camera capture • No gallery file uploads permitted • Non-blocking if camera is unavailable')}
           </p>
         </div>
       )}

@@ -327,57 +327,69 @@ export const ReportEmergencyPage: React.FC = () => {
     }
   }, [viewReportId, searchParams]);
 
-  const emergencyTypesList: { type: EmergencyType; label: string; icon: any }[] = [
-    { type: 'Medical Emergency', label: 'Medical Emergency', icon: HeartPulse },
-    { type: 'Fire', label: 'Fire Outbreak', icon: Flame },
-    { type: 'Flood', label: 'Flood / Waterlogging', icon: Waves },
-    { type: 'Road Accident', label: 'Road Accident', icon: Car },
-    { type: 'Cyclone / Storm', label: 'Cyclone / High Winds', icon: Wind },
-    { type: 'Landslide', label: 'Landslide', icon: Mountain },
-    { type: 'Building Collapse', label: 'Building Collapse', icon: Building2 },
-    { type: 'Missing / Trapped Person', label: 'Trapped / Missing', icon: UserX },
-    { type: 'Other', label: 'Other Emergency', icon: AlertTriangle },
+  const emergencyTypesList: { type: EmergencyType; labelKey: string; defaultLabel: string; icon: any }[] = [
+    { type: 'Medical Emergency', labelKey: 'emergency.medical', defaultLabel: 'Medical Emergency', icon: HeartPulse },
+    { type: 'Fire', labelKey: 'emergency.fire', defaultLabel: 'Fire Outbreak', icon: Flame },
+    { type: 'Flood', labelKey: 'emergency.flood', defaultLabel: 'Flood / Waterlogging', icon: Waves },
+    { type: 'Road Accident', labelKey: 'emergency.accident', defaultLabel: 'Road Accident', icon: Car },
+    { type: 'Cyclone / Storm', labelKey: 'emergency.cyclone', defaultLabel: 'Cyclone / High Winds', icon: Wind },
+    { type: 'Landslide', labelKey: 'emergency.landslide', defaultLabel: 'Landslide', icon: Mountain },
+    { type: 'Building Collapse', labelKey: 'emergency.collapse', defaultLabel: 'Building Collapse', icon: Building2 },
+    { type: 'Missing / Trapped Person', labelKey: 'emergency.missing', defaultLabel: 'Trapped / Missing', icon: UserX },
+    { type: 'Other', labelKey: 'emergency.other', defaultLabel: 'Other Emergency', icon: AlertTriangle },
   ];
 
   const impactLevelsList: {
     level: CitizenImpactLevel;
-    label: string;
-    description: string;
+    labelKey: string;
+    defaultLabel: string;
+    descKey: string;
+    defaultDesc: string;
     color: string;
     badgeColor: string;
   }[] = [
     {
       level: 'LOW',
-      label: 'Low',
-      description: 'Minor damage or disruption. No immediate life threat or structural collapse.',
+      labelKey: 'impact.low',
+      defaultLabel: 'Low',
+      descKey: 'impact.lowDesc',
+      defaultDesc: 'Minor damage or disruption. No immediate life threat or structural collapse.',
       color: 'border-blue-200 bg-blue-50/60 text-blue-900 hover:border-blue-400',
       badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
     },
     {
       level: 'MEDIUM',
-      label: 'Medium',
-      description: 'Moderate hazard with localized property damage. Standard emergency support needed.',
+      labelKey: 'impact.medium',
+      defaultLabel: 'Medium',
+      descKey: 'impact.mediumDesc',
+      defaultDesc: 'Moderate hazard with localized property damage. Standard emergency support needed.',
       color: 'border-amber-200 bg-amber-50/60 text-amber-900 hover:border-amber-400',
       badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
     },
     {
       level: 'HIGH',
-      label: 'High',
-      description: 'Severe threat to safety, spreading hazard, or major injuries. Urgent intervention required.',
+      labelKey: 'impact.high',
+      defaultLabel: 'High',
+      descKey: 'impact.highDesc',
+      defaultDesc: 'Severe threat to safety, spreading hazard, or major injuries. Urgent intervention required.',
       color: 'border-orange-200 bg-orange-50/60 text-orange-900 hover:border-orange-400',
       badgeColor: 'bg-orange-100 text-orange-800 border-orange-200',
     },
     {
       level: 'CRITICAL',
-      label: 'Critical',
-      description: 'Immediate life-threatening danger, catastrophic incident, or trapped individuals.',
+      labelKey: 'impact.critical',
+      defaultLabel: 'Critical',
+      descKey: 'impact.criticalDesc',
+      defaultDesc: 'Immediate life-threatening danger, catastrophic incident, or trapped individuals.',
       color: 'border-red-200 bg-red-50/60 text-red-900 hover:border-red-400',
       badgeColor: 'bg-red-100 text-red-800 border-red-200',
     },
     {
       level: 'NOT_SURE',
-      label: "I'm not sure",
-      description: 'Uncertain severity. Watch officer and AI intelligence will evaluate and triage.',
+      labelKey: 'impact.notSure',
+      defaultLabel: "I'm not sure",
+      descKey: 'impact.notSureDesc',
+      defaultDesc: 'Uncertain severity. Watch officer and AI intelligence will evaluate and triage.',
       color: 'border-slate-200 bg-slate-50/80 text-slate-800 hover:border-slate-400',
       badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
     },
@@ -623,22 +635,22 @@ export const ReportEmergencyPage: React.FC = () => {
     setError(null);
 
     if (!fullName || fullName.trim().length < 2) {
-      setError('Please provide your full name (at least 2 characters).');
+      setError(t('error.nameRequired', 'Please provide your full name (at least 2 characters).'));
       return;
     }
 
     if (!phone || phone.trim().length < 7) {
-      setError('Please provide a valid reachable phone number (7-15 digits).');
+      setError(t('error.phoneRequired', 'Please provide a valid reachable phone number (7-15 digits).'));
       return;
     }
 
     if (!citizenImpactLevel) {
-      setError('Please select an observed citizen impact level (or select "I\'m not sure").');
+      setError(t('error.impactRequired', 'Please select an observed citizen impact level (or select "I\'m not sure").'));
       return;
     }
 
     if (!description || description.trim().length < 10) {
-      setError('Please provide a descriptive explanation of the incident (at least 10 characters).');
+      setError(t('error.descriptionRequired', 'Please provide a descriptive explanation of the incident (at least 10 characters).'));
       return;
     }
 
@@ -646,7 +658,7 @@ export const ReportEmergencyPage: React.FC = () => {
     const lonNum = parseFloat(longitude);
 
     if (isNaN(latNum) || isNaN(lonNum) || latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) {
-      setError('Valid latitude (-90 to +90) and longitude (-180 to +180) are required. Use "Use My Location" or input coordinates.');
+      setError(t('error.coordsRequired', 'Valid latitude (-90 to +90) and longitude (-180 to +180) are required. Use "Use My Location" or input coordinates.'));
       return;
     }
 
@@ -707,11 +719,11 @@ export const ReportEmergencyPage: React.FC = () => {
       if (backendError) {
         setError(typeof backendError === 'string' ? backendError : JSON.stringify(backendError));
       } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        setError('Submission status could not be confirmed immediately due to network latency. Please check your active report status before resubmitting.');
+        setError(t('error.timeout', 'Submission status could not be confirmed immediately due to network latency. Please check your active report status before resubmitting.'));
       } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        setError('Network connection offline. Please check your internet connection before submitting.');
+        setError(t('error.offline', 'Network connection offline. Please check your internet connection before submitting.'));
       } else {
-        setError(err.message || 'Failed to submit emergency report. Please try again.');
+        setError(err.message || t('error.submissionFailed', 'Failed to submit emergency report. Please try again.'));
       }
     } finally {
       setSubmitting(false);
@@ -725,7 +737,7 @@ export const ReportEmergencyPage: React.FC = () => {
     setEditSuccessNotice(null);
 
     if (editDescription.trim().length < 10) {
-      setEditErrorNotice('Description must be at least 10 characters.');
+      setEditErrorNotice(t('error.descriptionRequired', 'Description must be at least 10 characters.'));
       return;
     }
 
@@ -748,7 +760,7 @@ export const ReportEmergencyPage: React.FC = () => {
 
       setSubmittedReport(updated);
       sessionStorage.setItem('resilience_active_citizen_report', JSON.stringify(updated));
-      setEditSuccessNotice('Emergency report updated successfully. Safety guidance was re-evaluated.');
+      setEditSuccessNotice(t('receipt.updateSuccess', 'Emergency report updated successfully. Safety guidance was re-evaluated.'));
       setEditAdditionalNotes('');
       setIsEditingReport(false);
       setTimeout(() => setEditSuccessNotice(null), 6000);
@@ -768,121 +780,120 @@ export const ReportEmergencyPage: React.FC = () => {
   };
 
   return (
-    <div className="relative min-h-screen text-slate-900 py-6 sm:py-10 px-4 sm:px-6 lg:px-8 bg-[#EEF2F6] selection:bg-red-100 selection:text-red-900">
+    <div className="relative min-h-screen text-slate-900 py-4 sm:py-10 px-3 sm:px-6 lg:px-8 bg-[#EEF2F6] selection:bg-red-100 selection:text-red-900">
       <TacticalBackground />
       {/* Top Brand Header */}
-      <header className="relative z-10 max-w-4xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-200/80">
-        <div className="flex items-center gap-2.5 sm:gap-3">
+      <header className="relative z-10 max-w-4xl mx-auto w-full flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-slate-200/80 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <EmergencyEmblem size="sm" />
-          <div>
-            <div className="font-mono text-[10px] sm:text-[11px] uppercase tracking-widest text-[#dc2626] font-bold">
-              CITIZEN INTAKE PORTAL
+          <div className="min-w-0">
+            <div className="font-mono text-[9px] sm:text-[11px] uppercase tracking-widest text-[#dc2626] font-bold truncate">
+              {t('report.badge', 'CITIZEN INTAKE PORTAL')}
             </div>
-            <div className="font-black text-xs sm:text-sm text-slate-900 tracking-tight">
+            <div className="font-black text-xs sm:text-sm text-slate-900 tracking-tight truncate">
               RESILIENCE EMERGENCY RESPONSE NETWORK
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <LanguageSelector variant="compact" />
           <button
             onClick={() => navigate('/')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white/80 hover:bg-slate-100 text-xs font-mono font-semibold text-slate-700 transition-all shadow-xs min-h-[36px] cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 bg-white/80 hover:bg-slate-100 text-xs font-mono font-semibold text-slate-700 transition-all shadow-xs min-h-[36px] cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Exit to Home</span>
+            <span className="hidden xs:inline">{t('report.backHome', 'Exit to Home')}</span>
           </button>
         </div>
       </header>
 
       {/* Main Content Area Protected by ErrorBoundary */}
-      <main className="relative z-10 max-w-3xl mx-auto w-full pb-12">
-        <ErrorBoundary fallbackTitle="Emergency Report Form Could Not Be Loaded" fallbackMessage="An issue occurred while loading the emergency intake form. You can retry below or contact dispatch directly.">
+      <main className="relative z-10 max-w-3xl mx-auto w-full pb-12 min-w-0">
+        <ErrorBoundary fallbackTitle={t('error.submissionFailed', 'Emergency Report Form Could Not Be Loaded')} fallbackMessage="An issue occurred while loading the emergency intake form. You can retry below or contact dispatch directly.">
         {submittedReport ? (
           /* ========================================================
              SUBMISSION RECEIPT & CONFIRMATION VIEW
              ======================================================== */
-          <div className="p-6 sm:p-10 rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-200/60 text-center animate-in fade-in duration-300">
-            <div className="w-16 h-16 rounded-2xl bg-red-50 border-2 border-red-200 text-[#dc2626] flex items-center justify-center mx-auto mb-4 shadow-sm">
-              <ShieldCheck className="w-9 h-9" />
+          <div className="p-4 sm:p-10 rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-200/60 text-center animate-in fade-in duration-300 w-full max-w-full min-w-0">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-red-50 border-2 border-red-200 text-[#dc2626] flex items-center justify-center mx-auto mb-4 shadow-sm">
+              <ShieldCheck className="w-8 h-8 sm:w-9 sm:h-9" />
             </div>
 
             <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-50 border border-red-200 text-[#dc2626] font-mono text-[11px] font-bold tracking-widest uppercase mb-2">
               <span className="w-2 h-2 rounded-full bg-[#dc2626] animate-ping" />
-              STATUS: RECEIVED
+              {t('receipt.statusReceived', 'STATUS: RECEIVED')}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black font-sans tracking-tight text-slate-900 uppercase mb-2">
-              Emergency Report Received
+            <h1 className="text-xl sm:text-3xl font-black font-sans tracking-tight text-slate-900 uppercase mb-2">
+              {t('receipt.title', 'Emergency Report Received')}
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed mb-6">
-              Your emergency report has been received by the Resilience emergency coordination network.
-              Incident assessment is queued for immediate human-in-the-loop dispatch triage by an authorized watch officer.
+              {t('receipt.subtitle', 'Your emergency report has been received by the Resilience emergency coordination network. Incident assessment is queued for immediate human-in-the-loop dispatch triage by an authorized watch officer.')}
             </p>
 
             {/* Prominent Report ID Card */}
-            <div className="max-w-md mx-auto p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="text-left">
+            <div className="max-w-md mx-auto p-3.5 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-left w-full sm:w-auto">
                 <div className="font-mono text-[10px] uppercase text-slate-500 font-bold tracking-wider">
-                  OFFICIAL REPORT IDENTIFIER
+                  {t('receipt.reportIdLabel', 'OFFICIAL REPORT IDENTIFIER')}
                 </div>
-                <div className="font-mono text-xl sm:text-2xl font-black text-slate-900 tracking-wider">
+                <div className="font-mono text-lg sm:text-2xl font-black text-slate-900 tracking-wider truncate">
                   {submittedReport.report_id}
                 </div>
               </div>
 
               <button
                 onClick={() => copyToClipboard(submittedReport.report_id)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-mono font-semibold transition-all shadow-sm"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-mono font-semibold transition-all shadow-sm cursor-pointer"
               >
                 {copiedId ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-600" />
-                    <span className="text-emerald-700">Copied!</span>
+                    <span className="text-emerald-700">{t('receipt.copied', 'Copied!')}</span>
                   </>
                 ) : (
                   <>
                     <Copy className="w-4 h-4 text-slate-500" />
-                    <span>Copy Report ID</span>
+                    <span>{t('receipt.copyId', 'Copy Report ID')}</span>
                   </>
                 )}
               </button>
             </div>
 
             {/* Summary Details Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-lg mx-auto mb-6 text-left text-xs font-mono">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 max-w-lg mx-auto mb-6 text-left text-xs font-mono">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <div className="text-[10px] text-slate-400 font-bold uppercase">EMERGENCY TYPE</div>
-                <div className="font-bold text-slate-800 mt-0.5">{submittedReport.emergency_type}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase">{t('receipt.emergencyType', 'EMERGENCY TYPE')}</div>
+                <div className="font-bold text-slate-800 mt-0.5 truncate">{submittedReport.emergency_type}</div>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <div className="text-[10px] text-slate-400 font-bold uppercase">DECLARED IMPACT</div>
-                <div className="font-bold text-slate-900 mt-0.5 flex items-center gap-1">
-                  <span className="inline-block w-2 h-2 rounded-full bg-red-600" />
+                <div className="text-[10px] text-slate-400 font-bold uppercase">{t('receipt.declaredImpact', 'DECLARED IMPACT')}</div>
+                <div className="font-bold text-slate-900 mt-0.5 flex items-center gap-1 truncate">
+                  <span className="inline-block w-2 h-2 rounded-full bg-red-600 flex-shrink-0" />
                   <span>{submittedReport.citizen_impact_level || 'NOT_SURE'}</span>
                 </div>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <div className="text-[10px] text-slate-400 font-bold uppercase">EVIDENCE STATUS</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase">{t('receipt.evidenceStatus', 'EVIDENCE STATUS')}</div>
                 <div className="font-bold text-slate-800 mt-0.5 truncate">
                   {submittedReport.evidence ? (
                     <span className="text-emerald-700">✓ {submittedReport.evidence.validation_status}</span>
                   ) : (
-                    <span className="text-slate-500">None Provided</span>
+                    <span className="text-slate-500">{t('receipt.noneProvided', 'None Provided')}</span>
                   )}
                 </div>
               </div>
             </div>
 
             {/* Confirmed Address Card */}
-            <div className="max-w-lg mx-auto p-4 rounded-xl bg-slate-50 border border-slate-200 mb-6 text-left shadow-sm space-y-2">
+            <div className="max-w-lg mx-auto p-3.5 sm:p-4 rounded-xl bg-slate-50 border border-slate-200 mb-6 text-left shadow-sm space-y-2">
               <div className="flex items-center justify-between">
                 <div className="font-mono text-[10px] uppercase text-slate-500 font-bold tracking-wider">
-                  CONFIRMED INCIDENT LOCATION
+                  {t('receipt.confirmedLocation', 'CONFIRMED INCIDENT LOCATION')}
                 </div>
                 <a
                   href={`https://www.openstreetmap.org/?mlat=${submittedReport.location.latitude}&mlon=${submittedReport.location.longitude}#map=16/${submittedReport.location.latitude}/${submittedReport.location.longitude}`}
@@ -891,20 +902,20 @@ export const ReportEmergencyPage: React.FC = () => {
                   className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-[#dc2626] hover:underline"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open on Map</span>
+                  <span>{t('receipt.openOnMap', 'Open on Map')}</span>
                 </a>
               </div>
 
               <div>
-                <div className="text-[10px] font-mono text-slate-400 font-bold uppercase">Street Address / Landmark</div>
+                <div className="text-[10px] font-mono text-slate-400 font-bold uppercase">{t('receipt.streetLandmark', 'Street Address / Landmark')}</div>
                 <div className="flex items-start gap-1.5 text-sm font-sans font-bold text-slate-900 mt-0.5">
                   <MapPin className="w-4 h-4 text-[#dc2626] flex-shrink-0 mt-0.5" />
-                  <span>{submittedReport.location.street_address || submittedReport.location.address || 'Address unavailable'}</span>
+                  <span>{submittedReport.location.street_address || submittedReport.location.address || t('receipt.addressUnavailable', 'Address unavailable')}</span>
                 </div>
               </div>
 
               <div className="text-xs font-mono text-slate-500 pl-5 pt-1 border-t border-slate-200/80">
-                Coordinates: {submittedReport.location.latitude.toFixed(5)}, {submittedReport.location.longitude.toFixed(5)}
+                {t('receipt.coordsLabel', 'Coordinates:')} {submittedReport.location.latitude.toFixed(5)}, {submittedReport.location.longitude.toFixed(5)}
               </div>
             </div>
 
@@ -923,22 +934,22 @@ export const ReportEmergencyPage: React.FC = () => {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-mono font-semibold text-slate-700 shadow-sm transition-all cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Modify Report Details</span>
+                  <span>{t('receipt.modifyBtn', 'Modify Report Details')}</span>
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleUpdateReport} className="max-w-lg mx-auto p-5 rounded-xl bg-slate-50 border border-slate-200 mb-6 text-left space-y-4 animate-in fade-in duration-200 shadow-sm">
+              <form onSubmit={handleUpdateReport} className="max-w-lg mx-auto p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 mb-6 text-left space-y-4 animate-in fade-in duration-200 shadow-sm">
                 <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
                   <div className="font-mono text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
                     <Edit3 className="w-3.5 h-3.5 text-red-600" />
-                    <span>Update Report Details</span>
+                    <span>{t('receipt.updateTitle', 'Update Report Details')}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsEditingReport(false)}
-                    className="text-xs text-slate-500 hover:text-slate-800 font-mono"
+                    className="text-xs text-slate-500 hover:text-slate-800 font-mono cursor-pointer"
                   >
-                    Cancel
+                    {t('receipt.cancel', 'Cancel')}
                   </button>
                 </div>
 
@@ -951,34 +962,34 @@ export const ReportEmergencyPage: React.FC = () => {
 
                 <div>
                   <label className="block text-[11px] font-mono font-bold text-slate-700 uppercase mb-1">
-                    Incident Description (Min 10 characters)
+                    {t('report.descriptionLabel', 'Incident Description (Min 10 characters)')}
                   </label>
                   <textarea
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
                     rows={3}
                     className="w-full text-xs font-sans p-2.5 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-red-500 focus:outline-none"
-                    placeholder="Provide updated details on the situation..."
+                    placeholder={t('report.descriptionPlaceholder', 'Provide updated details on the situation...')}
                   />
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-mono font-bold text-slate-700 uppercase mb-1">
-                    Observed Citizen Impact
+                    {t('report.impactLevel', 'Observed Citizen Impact')}
                   </label>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-                    {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL', 'NOT_SURE'] as CitizenImpactLevel[]).map((lvl) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                    {impactLevelsList.map((item) => (
                       <button
-                        key={lvl}
+                        key={item.level}
                         type="button"
-                        onClick={() => setEditImpactLevel(lvl)}
-                        className={`py-1.5 px-2 rounded-lg text-[10px] font-mono font-bold border transition-all ${
-                          editImpactLevel === lvl
+                        onClick={() => setEditImpactLevel(item.level)}
+                        className={`py-1.5 px-2 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer ${
+                          editImpactLevel === item.level
                             ? 'bg-red-600 text-white border-red-600 shadow-sm'
                             : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        {lvl}
+                        {t(item.labelKey, item.defaultLabel)}
                       </button>
                     ))}
                   </div>
@@ -987,7 +998,7 @@ export const ReportEmergencyPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block text-[11px] font-mono font-bold text-slate-700 uppercase mb-1">
-                      Contact Name
+                      {t('report.fullName', 'Full Name *')}
                     </label>
                     <input
                       type="text"
@@ -998,7 +1009,7 @@ export const ReportEmergencyPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-[11px] font-mono font-bold text-slate-700 uppercase mb-1">
-                      Contact Phone
+                      {t('report.phone', 'Mobile Phone Number *')}
                     </label>
                     <input
                       type="tel"
@@ -1026,17 +1037,17 @@ export const ReportEmergencyPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsEditingReport(false)}
-                    className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-mono font-semibold"
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-mono font-semibold cursor-pointer"
                   >
-                    Cancel
+                    {t('receipt.cancel', 'Cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={editSubmitting}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-mono font-bold shadow-sm disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-mono font-bold shadow-sm disabled:opacity-50 cursor-pointer"
                   >
                     {editSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    <span>Save & Re-evaluate</span>
+                    <span>{t('receipt.saveBtn', 'Save & Re-evaluate')}</span>
                   </button>
                 </div>
               </form>
@@ -1044,20 +1055,20 @@ export const ReportEmergencyPage: React.FC = () => {
 
             {/* Prominent Live Safety Guidance Callout */}
             {submittedReport.safety_guidance_token ? (
-              <div className="max-w-lg mx-auto p-5 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 text-white shadow-xl shadow-red-600/30 mb-8 text-left space-y-3 animate-in slide-in-from-bottom-2">
+              <div className="max-w-lg mx-auto p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 text-white shadow-xl shadow-red-600/30 mb-8 text-left space-y-3 animate-in slide-in-from-bottom-2">
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-mono text-[10px] font-bold tracking-wider uppercase backdrop-blur-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                    LIVE ADVISORY GENERATED
+                    {t('receipt.guidanceReadyBadge', 'LIVE ADVISORY GENERATED')}
                   </span>
                   <span className="text-[11px] font-mono opacity-80">AI Safety Guidance</span>
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white tracking-tight">
-                    Instant Evacuation & Safety Route Ready
+                    {t('receipt.guidanceReadyTitle', 'Instant Evacuation & Safety Route Ready')}
                   </h3>
                   <p className="text-xs text-red-100 mt-1 leading-relaxed">
-                    AI safety intelligence has evaluated your emergency report and calculated a verified destination, safe navigation corridor, and immediate hazard precautions.
+                    {t('receipt.guidanceReadyDesc', 'AI safety intelligence has evaluated your emergency report and calculated a verified destination, safe navigation corridor, and immediate hazard precautions.')}
                   </p>
                 </div>
                 <div className="pt-1">
@@ -1065,7 +1076,7 @@ export const ReportEmergencyPage: React.FC = () => {
                     onClick={() => navigate(`/safety-guidance/${submittedReport.safety_guidance_token}?lang=${encodeURIComponent(language || 'en')}`)}
                     className="w-full py-3 px-4 rounded-xl bg-white hover:bg-red-50 text-red-700 font-sans font-black text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
                   >
-                    <span>VIEW LIVE SAFETY GUIDANCE & ROUTE</span>
+                    <span>{t('receipt.viewGuidanceBtn', 'VIEW LIVE SAFETY GUIDANCE & ROUTE')}</span>
                     <ExternalLink className="w-4 h-4" />
                   </button>
                 </div>
@@ -1074,9 +1085,9 @@ export const ReportEmergencyPage: React.FC = () => {
               <div className="max-w-lg mx-auto p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 mb-6 text-left flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div className="text-xs space-y-1">
-                  <div className="font-bold">Live Safety Guidance Initializing...</div>
+                  <div className="font-bold">{t('receipt.guidanceInitTitle', 'Live Safety Guidance Initializing...')}</div>
                   <p className="text-slate-600">
-                    Your safety guidance is being calculated. You can access it anytime using your report reference.
+                    {t('receipt.guidanceInitDesc', 'Your safety guidance is being calculated. You can access it anytime using your report reference.')}
                   </p>
                 </div>
               </div>
@@ -1087,15 +1098,15 @@ export const ReportEmergencyPage: React.FC = () => {
               {comprehensivePushState === 'NOT_SUPPORTED' ? (
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-slate-500 text-xs">
                   <BellOff className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                  <span>Push notifications are not supported on this browser or device.</span>
+                  <span>{t('receipt.pushNotSupported', 'Push notifications are not supported on this browser or device.')}</span>
                 </div>
               ) : comprehensivePushState === 'INSECURE_CONTEXT' ? (
                 <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-amber-900 text-xs">
                   <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-bold font-sans">Browser Notifications Require HTTPS</div>
+                    <div className="font-bold font-sans">{t('receipt.pushHttpsRequired', 'Browser Notifications Require HTTPS')}</div>
                     <p className="text-amber-800 text-[11px] mt-0.5 leading-relaxed">
-                      Browser notifications require HTTPS on this device. Emergency report submission and Safety Guidance remain fully functional.
+                      {t('receipt.pushHttpsRequiredDesc', 'Browser notifications require HTTPS on this device. Emergency report submission and Safety Guidance remain fully functional.')}
                     </p>
                   </div>
                 </div>
@@ -1103,9 +1114,9 @@ export const ReportEmergencyPage: React.FC = () => {
                 <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-amber-900 text-xs">
                   <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-bold">Notifications Blocked in Browser Settings</div>
+                    <div className="font-bold">{t('receipt.pushBlocked', 'Notifications Blocked in Browser Settings')}</div>
                     <p className="text-amber-800 text-[11px] mt-0.5">
-                      Emergency push alerts cannot be delivered. To receive evacuation and road route updates, allow notifications in your browser's site settings.
+                      {t('receipt.pushBlockedDesc', 'Emergency push alerts cannot be delivered. To receive evacuation and road route updates, allow notifications in your browser site settings.')}
                     </p>
                   </div>
                 </div>
@@ -1115,10 +1126,10 @@ export const ReportEmergencyPage: React.FC = () => {
                     <div className="space-y-0.5">
                       <div className="text-xs font-bold flex items-center gap-1.5 text-emerald-900">
                         <BellRing className="w-4 h-4 text-emerald-600 animate-pulse" />
-                        <span>Emergency Alerts Active</span>
+                        <span>{t('receipt.pushActive', 'Emergency Alerts Active')}</span>
                       </div>
                       <p className="text-[11px] text-emerald-700">
-                        This device is verified and registered to receive live evacuation, corridor, and road change alerts.
+                        {t('receipt.pushActiveDesc', 'This device is verified and registered to receive live evacuation, corridor, and road change alerts.')}
                       </p>
                     </div>
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-mono font-bold uppercase tracking-wider flex-shrink-0">
@@ -1135,7 +1146,7 @@ export const ReportEmergencyPage: React.FC = () => {
                       className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-sans font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                     >
                       <Bell className="w-3.5 h-3.5" />
-                      <span>{testPushSending ? 'Sending Test...' : 'Send Test Emergency Alert'}</span>
+                      <span>{testPushSending ? t('receipt.pushSendingTest', 'Sending Test...') : t('receipt.pushSendTest', 'Send Test Emergency Alert')}</span>
                     </button>
                     {testPushMessage && (
                       <span className="text-[10px] font-mono text-emerald-800">
@@ -1149,7 +1160,7 @@ export const ReportEmergencyPage: React.FC = () => {
                   <div className="space-y-0.5">
                     <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Bell className="w-4 h-4 text-red-600" />
-                      <span>Connect Emergency Alerts</span>
+                      <span>{t('receipt.pushConnect', 'Connect Emergency Alerts')}</span>
                     </div>
                     <p className="text-[11px] text-slate-500">
                       Notification permission is granted. Complete registration to bind live alerts to report #{submittedReport.report_id}.
@@ -1160,7 +1171,7 @@ export const ReportEmergencyPage: React.FC = () => {
                     disabled={pushSubscribing}
                     className="px-3.5 py-1.5 rounded-lg bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-sans font-bold shadow-sm flex-shrink-0 disabled:opacity-50 cursor-pointer"
                   >
-                    {pushSubscribing ? 'Connecting...' : 'Connect Alerts'}
+                    {pushSubscribing ? t('receipt.pushConnecting', 'Connecting...') : t('receipt.pushConnect', 'Connect Alerts')}
                   </button>
                 </div>
               ) : (
@@ -1169,10 +1180,10 @@ export const ReportEmergencyPage: React.FC = () => {
                   <div className="space-y-0.5">
                     <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                       <Bell className="w-4 h-4 text-red-600" />
-                      <span>🔔 Emergency Alerts & Evacuation Updates</span>
+                      <span>{t('receipt.pushAlertsTitle', 'Emergency Alerts & Evacuation Updates')}</span>
                     </div>
                     <p className="text-[11px] text-slate-600">
-                      Get immediate alerts if evacuation orders, route corridors, or safety instructions change.
+                      {t('receipt.pushAlertsDesc', 'Get immediate alerts if evacuation orders, route corridors, or safety instructions change.')}
                     </p>
                     {pushErrorNotice && (
                       <p className="text-[11px] text-red-600 font-semibold pt-1">
@@ -1185,7 +1196,7 @@ export const ReportEmergencyPage: React.FC = () => {
                     disabled={pushSubscribing}
                     className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-sans font-bold shadow-sm flex-shrink-0 disabled:opacity-50 cursor-pointer"
                   >
-                    {pushSubscribing ? 'Enabling...' : 'Enable Alerts'}
+                    {pushSubscribing ? t('receipt.pushEnabling', 'Enabling...') : t('receipt.pushEnable', 'Enable Alerts')}
                   </button>
                 </div>
               )}
@@ -1208,16 +1219,16 @@ export const ReportEmergencyPage: React.FC = () => {
                   setPhone('');
                   setBotHoneypot('');
                 }}
-                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-sans text-xs font-bold transition-all"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-sans text-xs font-bold transition-all cursor-pointer"
               >
-                Report Another Incident
+                {t('receipt.reportAnother', 'Report Another Incident')}
               </button>
 
               <button
                 onClick={() => navigate('/')}
-                className="px-6 py-2.5 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-xs font-bold transition-all shadow-sm"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-xs font-bold transition-all shadow-sm cursor-pointer"
               >
-                Return to Platform Landing
+                {t('receipt.returnHome', 'Return to Platform Landing')}
               </button>
             </div>
           </div>
@@ -1225,37 +1236,37 @@ export const ReportEmergencyPage: React.FC = () => {
           /* ========================================================
              REPORT EMERGENCY FORM
              ======================================================== */
-          <div className="p-6 sm:p-10 rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-200/60">
+          <div className="p-4 sm:p-10 rounded-2xl bg-white border border-slate-200 shadow-xl shadow-slate-200/60 w-full max-w-full min-w-0">
             {/* Header Title */}
-            <div className="text-left mb-8 pb-6 border-b border-slate-100">
+            <div className="text-left mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-slate-100 min-w-0">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 border border-red-200 text-[#dc2626] font-mono text-[10px] font-bold uppercase tracking-wider mb-2">
-                <Siren className="w-3.5 h-3.5" />
-                <span>DIRECT CITIZEN INGESTION</span>
+                <Siren className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{t('report.badge', 'DIRECT CITIZEN INGESTION')}</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black font-sans tracking-tight text-slate-900 uppercase">
-                Report an Emergency
+              <h1 className="text-xl sm:text-3xl font-black font-sans tracking-tight text-slate-900 uppercase">
+                {t('report.formTitle', 'Report an Emergency')}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-xl">
-                Submit an immediate situational report to the emergency coordination network. Evidence-backed reports are prioritized for rapid dispatch triage.
+              <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-xl leading-relaxed">
+                {t('report.formSubtitle', 'Submit an immediate situational report to the emergency coordination network. Evidence-backed reports are prioritized for rapid dispatch triage.')}
               </p>
             </div>
 
             {/* Error Message */}
             {error && (
-              <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 text-xs text-red-700">
+              <div className="mb-6 p-3.5 sm:p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 text-xs text-red-700">
                 <AlertCircle className="w-5 h-5 text-[#dc2626] flex-shrink-0 mt-0.5" />
                 <div className="flex-1 font-medium">{error}</div>
-                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-700">
+                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-700 cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             )}
 
-            <form onSubmit={handleSubmitReport} className="space-y-6">
+            <form onSubmit={handleSubmitReport} className="space-y-5 sm:space-y-6 w-full max-w-full min-w-0">
               {/* 1. Emergency Type Selection */}
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 mb-2 font-bold">
-                  1. Emergency Type *
+                  {t('report.sectionEmergencyType', '1. Emergency Type *')}
                 </label>
                 {autoDetectedTypeNotice && (
                   <div className="mb-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center justify-between animate-in fade-in">
@@ -1263,13 +1274,13 @@ export const ReportEmergencyPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setAutoDetectedTypeNotice(null)}
-                      className="text-emerald-500 hover:text-emerald-800 ml-2"
+                      className="text-emerald-500 hover:text-emerald-800 ml-2 cursor-pointer"
                     >
                       ×
                     </button>
                   </div>
                 )}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5">
                   {emergencyTypesList.map((item) => {
                     const Icon = item.icon;
                     const isSelected = emergencyType === item.type;
@@ -1282,7 +1293,7 @@ export const ReportEmergencyPage: React.FC = () => {
                           setUserManuallySelectedType(true);
                           setAutoDetectedTypeNotice(null);
                         }}
-                        className={`flex items-center gap-2.5 p-3 rounded-xl border text-left text-xs font-sans font-semibold transition-all shadow-sm ${
+                        className={`flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 rounded-xl border text-left text-xs font-sans font-semibold transition-all shadow-sm cursor-pointer min-h-[44px] min-w-0 ${
                           isSelected
                             ? 'border-[#dc2626] bg-red-50 text-slate-900 ring-1 ring-red-500/20'
                             : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100/70'
@@ -1293,7 +1304,7 @@ export const ReportEmergencyPage: React.FC = () => {
                         }`}>
                           <Icon className="w-4 h-4" />
                         </div>
-                        <span className="truncate">{item.label}</span>
+                        <span className="truncate">{t(item.labelKey, item.defaultLabel)}</span>
                       </button>
                     );
                   })}
@@ -1301,21 +1312,21 @@ export const ReportEmergencyPage: React.FC = () => {
               </div>
 
               {/* 2. Impact Level (Citizen Self-Assessment) */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-1 mb-1.5">
                   <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 font-bold">
-                    2. Citizen-Assessed Impact Level *
+                    {t('report.sectionImpact', '2. Citizen-Assessed Impact Level *')}
                   </label>
-                  <span className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-[10px] sm:text-[11px] text-slate-500 flex items-center gap-1 font-mono">
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                     <span>Triage indicator for watch officers</span>
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 mb-2.5">
+                <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
                   Select the urgency level based on your direct observation. The Emergency Officer will verify and assign final operational dispatch priority.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 sm:gap-2.5">
                   {impactLevelsList.map((item) => {
                     const isSelected = citizenImpactLevel === item.level;
                     return (
@@ -1323,7 +1334,7 @@ export const ReportEmergencyPage: React.FC = () => {
                         key={item.level}
                         type="button"
                         onClick={() => setCitizenImpactLevel(item.level)}
-                        className={`flex flex-col justify-between p-3 rounded-xl border text-left transition-all shadow-2xs ${
+                        className={`flex flex-col justify-between p-3 rounded-xl border text-left transition-all shadow-2xs cursor-pointer min-w-0 ${
                           isSelected
                             ? `${item.color} ring-2 ring-slate-900/20 shadow-sm`
                             : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100/70'
@@ -1331,11 +1342,11 @@ export const ReportEmergencyPage: React.FC = () => {
                       >
                         <div>
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold font-sans">{item.label}</span>
-                            {isSelected && <span className="w-2 h-2 rounded-full bg-slate-900" />}
+                            <span className="text-xs font-bold font-sans">{t(item.labelKey, item.defaultLabel)}</span>
+                            {isSelected && <span className="w-2 h-2 rounded-full bg-slate-900 flex-shrink-0" />}
                           </div>
                           <p className="text-[10px] text-slate-500 leading-tight">
-                            {item.description}
+                            {t(item.descKey, item.defaultDesc)}
                           </p>
                         </div>
                       </button>
@@ -1345,10 +1356,10 @@ export const ReportEmergencyPage: React.FC = () => {
               </div>
 
               {/* 3. Emergency Description */}
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
                   <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 font-bold">
-                    3. {t('report.description', 'Describe the Situation')} *
+                    {t('report.sectionDescription', '3. Situation Description *')}
                   </label>
                   <span className="text-[10px] text-indigo-700 font-medium bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1">
                     <span>🌐</span>
@@ -1366,14 +1377,14 @@ export const ReportEmergencyPage: React.FC = () => {
               </div>
 
               {/* 4. Location Capture */}
-              <div className="p-4 sm:p-5 rounded-xl bg-slate-50/80 border border-slate-200 space-y-4">
+              <div className="p-3.5 sm:p-5 rounded-xl bg-slate-50/80 border border-slate-200 space-y-4 w-full max-w-full min-w-0">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 font-bold">
-                      4. Incident Location *
+                      {t('report.sectionLocation', '4. Incident Location *')}
                     </label>
                     <p className="text-[11px] text-slate-500">
-                      Provide GPS coordinates, pinpoint on map, or specify address for accurate dispatch mapping.
+                      {t('report.locationSubtext', 'Provide GPS coordinates, pinpoint on map, or specify address for accurate dispatch mapping.')}
                     </p>
                   </div>
 
@@ -1382,17 +1393,17 @@ export const ReportEmergencyPage: React.FC = () => {
                       type="button"
                       onClick={handleGetLocation}
                       disabled={locating}
-                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-sans font-bold shadow-sm transition-all cursor-pointer"
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-sans font-bold shadow-sm transition-all cursor-pointer min-h-[38px]"
                     >
                       {locating ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-[#dc2626]" />
-                          <span>Locating...</span>
+                          <span>{t('report.detectingGps', 'Locating...')}</span>
                         </>
                       ) : (
                         <>
                           <Navigation className="w-3.5 h-3.5 text-[#dc2626]" />
-                          <span>Use My Current Location</span>
+                          <span>{t('report.useMyLocation', 'Use My Current Location')}</span>
                         </>
                       )}
                     </button>
@@ -1405,7 +1416,7 @@ export const ReportEmergencyPage: React.FC = () => {
                     <div className="flex items-center gap-1.5 text-xs text-slate-700 font-sans font-semibold">
                       <MapPin className="w-3.5 h-3.5 text-[#dc2626]" />
                       <span className="text-[11px] font-mono uppercase font-bold text-slate-800">
-                        Interactive Map Pinpoint
+                        {t('map.visualizer', 'Interactive Map Pinpoint')}
                       </span>
                     </div>
                     <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 text-[10px] font-semibold">
@@ -1416,7 +1427,7 @@ export const ReportEmergencyPage: React.FC = () => {
                           mapType === 'roadmap' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        Map
+                        {t('report.mapTypeRoadmap', 'Map')}
                       </button>
                       <button
                         type="button"
@@ -1425,7 +1436,7 @@ export const ReportEmergencyPage: React.FC = () => {
                           mapType === 'satellite' ? 'bg-blue-600 text-white font-bold' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        Satellite
+                        {t('report.mapTypeSatellite', 'Satellite')}
                       </button>
                     </div>
                   </div>
@@ -1434,7 +1445,7 @@ export const ReportEmergencyPage: React.FC = () => {
                     <div ref={mapContainerRef} className="w-full h-full" />
                     <div className="absolute bottom-2 left-2 right-2 pointer-events-none">
                       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/95 backdrop-blur-xs border border-slate-200 text-[10px] font-sans font-medium text-slate-700 shadow-xs">
-                        <span>Tap map or drag pin to position emergency epicenter</span>
+                        <span>{t('report.mapDragHint', 'Tap map or drag pin to position emergency epicenter')}</span>
                       </div>
                     </div>
                   </div>
@@ -1443,14 +1454,14 @@ export const ReportEmergencyPage: React.FC = () => {
                 {locationStatus && (
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-700 flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-[#dc2626] flex-shrink-0" />
-                    <span>{locationStatus}</span>
+                    <span className="truncate">{locationStatus}</span>
                   </div>
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-mono text-slate-600 mb-1 font-semibold">
-                      Latitude *
+                      {t('report.latitude', 'Latitude *')}
                     </label>
                     <input
                       type="number"
@@ -1474,16 +1485,16 @@ export const ReportEmergencyPage: React.FC = () => {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-[11px] font-mono text-slate-600 font-semibold">
-                        Longitude *
+                        {t('report.longitude', 'Longitude *')}
                       </label>
                       {latitude && longitude && (
                         <button
                           type="button"
                           onClick={handleManualResolveAddress}
                           disabled={locating}
-                          className="text-[10px] font-mono text-[#dc2626] hover:underline font-bold"
+                          className="text-[10px] font-mono text-[#dc2626] hover:underline font-bold cursor-pointer"
                         >
-                          Resolve Address
+                          {t('report.resolveAddress', 'Resolve Address')}
                         </button>
                       )}
                     </div>
@@ -1511,25 +1522,25 @@ export const ReportEmergencyPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-mono text-slate-600 mb-1 font-semibold">
-                      Street Address / Landmark (Optional)
+                      {t('report.streetAddress', 'Street Address / Landmark (Optional)')}
                     </label>
                     <input
                       type="text"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      placeholder="e.g. Main Road Junction"
+                      placeholder={t('report.streetPlaceholder', 'e.g. Main Road Junction')}
                       className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 font-sans focus:outline-none focus:border-[#dc2626]"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-mono text-slate-600 mb-1 font-semibold">
-                      Zone / District (Optional)
+                      {t('report.zone', 'Zone / District (Optional)')}
                     </label>
                     <input
                       type="text"
                       value={manualZone}
                       onChange={(e) => setManualZone(e.target.value)}
-                      placeholder="e.g. Guntur District"
+                      placeholder={t('report.zonePlaceholder', 'e.g. Guntur District')}
                       className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-900 font-sans focus:outline-none focus:border-[#dc2626]"
                     />
                   </div>
@@ -1537,9 +1548,9 @@ export const ReportEmergencyPage: React.FC = () => {
               </div>
 
               {/* 5. Live Browser Camera Evidence Capture (Optional) */}
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 mb-1.5 font-bold">
-                  5. Live Photo Evidence (Optional)
+                  {t('report.sectionCamera', '5. Live Photo Evidence (Optional)')}
                 </label>
                 <LiveCameraCapture
                   onEvidenceCaptured={(evidence) => setEvidencePayload(evidence)}
@@ -1549,20 +1560,20 @@ export const ReportEmergencyPage: React.FC = () => {
               </div>
 
               {/* 6. Contact Information */}
-              <div className="p-4 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 space-y-4">
-                <div className="flex items-center justify-between">
+              <div className="p-3.5 sm:p-5 rounded-xl bg-slate-50 border border-slate-200 space-y-4 w-full max-w-full min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-1">
                   <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 font-bold">
-                    6. Contact Information *
+                    {t('report.sectionContact', '6. Contact Information *')}
                   </label>
-                  <span className="text-[11px] text-slate-500 font-sans">
-                    Required for dispatch contact & identity
+                  <span className="text-[10px] sm:text-[11px] text-slate-500 font-sans">
+                    {t('report.contactSubtext', 'Required for dispatch contact & identity')}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-mono text-slate-600 mb-1 font-semibold">
-                      Full Name *
+                      {t('report.fullName', 'Full Name *')}
                     </label>
                     <div className="relative">
                       <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1571,7 +1582,7 @@ export const ReportEmergencyPage: React.FC = () => {
                         required
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        placeholder="e.g. Ramesh Varma"
+                        placeholder={t('report.fullNamePlaceholder', 'e.g. Ramesh Varma')}
                         className="w-full pl-9 pr-3 py-2 rounded-lg bg-white border border-slate-200 text-xs sm:text-sm text-slate-900 font-sans focus:outline-none focus:border-[#dc2626]"
                       />
                     </div>
@@ -1579,7 +1590,7 @@ export const ReportEmergencyPage: React.FC = () => {
 
                   <div>
                     <label className="block text-[11px] font-mono text-slate-600 mb-1 font-semibold">
-                      Mobile Phone Number *
+                      {t('report.phone', 'Mobile Phone Number *')}
                     </label>
                     <div className="relative">
                       <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1588,7 +1599,7 @@ export const ReportEmergencyPage: React.FC = () => {
                         required
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="e.g. 9876543210"
+                        placeholder={t('report.phonePlaceholder', 'e.g. 9876543210')}
                         className="w-full pl-9 pr-3 py-2 rounded-lg bg-white border border-slate-200 text-xs sm:text-sm text-slate-900 font-mono focus:outline-none focus:border-[#dc2626]"
                       />
                     </div>
@@ -1611,25 +1622,25 @@ export const ReportEmergencyPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-3.5 px-6 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white text-sm font-sans font-bold shadow-md shadow-red-600/20 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full min-h-[48px] py-3.5 px-4 sm:px-6 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs sm:text-sm font-sans font-bold shadow-md shadow-red-600/20 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Transmitting Emergency Report...</span>
+                      <span>{t('report.submitting', 'Transmitting Emergency Report...')}</span>
                     </>
                   ) : (
                     <>
                       <Siren className="w-4 h-4" />
-                      <span>SUBMIT EMERGENCY REPORT</span>
+                      <span>{t('report.submitBtn', 'SUBMIT EMERGENCY REPORT')}</span>
                     </>
                   )}
                 </button>
               </div>
 
               <div className="text-center">
-                <p className="text-[11px] text-slate-400 font-mono">
-                  RESILIENCE DISPATCH • HUMAN-IN-THE-LOOP VERIFICATION ENFORCED
+                <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono">
+                  {t('report.hitlNotice', 'RESILIENCE DISPATCH • HUMAN-IN-THE-LOOP VERIFICATION ENFORCED')}
                 </p>
               </div>
             </form>

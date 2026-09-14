@@ -285,7 +285,7 @@ export const LandingPage: React.FC = () => {
         </nav>
 
         {/* Right: Actions + Language Selector + Mobile Menu Toggle */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <LanguageSelector variant="navbar" />
 
           <button
@@ -298,7 +298,7 @@ export const LandingPage: React.FC = () => {
 
           <button
             onClick={() => navigate('/report-emergency')}
-            className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-red-500/20 hover:-translate-y-0.5 min-h-[40px] cursor-pointer touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-red-500/20 hover:-translate-y-0.5 min-h-[40px] cursor-pointer touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
           >
             <Siren className="w-3.5 h-3.5" />
             <span className="whitespace-nowrap">{t('hero.reportBtn', 'Report Emergency Now')}</span>
@@ -307,7 +307,7 @@ export const LandingPage: React.FC = () => {
           {/* Mobile Hamburger Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-300 hover:border-slate-400 transition-colors cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center touch-manipulation"
+            className="md:hidden p-2 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-300 hover:border-slate-400 transition-colors cursor-pointer min-h-[38px] min-w-[38px] sm:min-h-[40px] sm:min-w-[40px] flex items-center justify-center touch-manipulation"
             aria-label="Toggle navigation menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -329,7 +329,19 @@ export const LandingPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+            {/* Primary High-Priority Mobile Emergency Button */}
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                navigate('/report-emergency');
+              }}
+              className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold text-sm shadow-md transition-all active:scale-[0.98] min-h-[48px] touch-manipulation cursor-pointer"
+            >
+              <Siren className="w-4 h-4" />
+              <span>{t('hero.reportBtn', 'Report Emergency Now')}</span>
+            </button>
+
             <div className="pb-2 border-b border-slate-100">
               <LanguageSelector variant="compact" className="w-full" />
             </div>
