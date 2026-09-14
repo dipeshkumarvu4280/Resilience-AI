@@ -304,9 +304,9 @@ class PlacesService:
         # 1. Primary: Google Places API (New) - places.googleapis.com/v1/places:searchNearby
         new_types = {
             "MEDICAL": ["hospital", "medical_clinic", "doctor"],
-            "POLICE": ["police", "local_government_office"],
-            "FIRE": ["fire_station", "hospital", "medical_clinic", "community_center"],
-            "TRANSIT": ["bus_station", "bus_stop", "transit_station"],
+            "POLICE": ["police"],
+            "FIRE": ["fire_station"],
+            "TRANSIT": ["bus_station", "transit_station"],
             "SHELTER": ["community_center", "city_hall", "local_government_office"],
             "FLOOD": ["community_center", "city_hall", "local_government_office", "hospital", "medical_clinic"],
         }
@@ -390,7 +390,8 @@ class PlacesService:
     def _is_valid_place_type(cls, place_types: List[str], need_category: str) -> bool:
         """
         Strict situation-aware type filter to prevent commercial stores, wholesalers,
-        restaurants, salons, tailor shops, and irrelevant businesses from entering emergency recommendations.
+        restaurants, salons, tailor shops, decorators, lighting shops, electrical businesses,
+        and irrelevant commercial places from entering emergency recommendations.
         """
         if not place_types:
             return False
@@ -408,27 +409,35 @@ class PlacesService:
             "electronics_store", "book_store", "pet_store", "car_dealer",
             "car_repair", "car_wash", "gas_station", "parking", "bank",
             "atm", "real_estate_agency", "travel_agency", "insurance_agency",
-            "hair_salon", "beauty_parlor", "tailor", "hairdresser", "event_venue"
+            "hair_salon", "beauty_parlor", "tailor", "hairdresser", "event_venue",
+            "lighting_store", "electrician", "hardware_store", "home_improvement_store",
+            "general_contractor", "plumber", "painter", "roofing_contractor",
+            "locksmith", "commercial_services", "lodging", "hotel", "motel",
+            "party_store", "event_planner", "wedding_service"
         }
 
         # Any commercial business without an explicit operational emergency facility type is rejected
         operational_types = {
-            "hospital", "medical_clinic", "doctor", "health", "pharmacy",
+            "hospital", "medical_clinic", "doctor", "health", "pharmacy", "medical_center",
             "fire_station",
             "police", "law_enforcement",
             "bus_station", "transit_station", "train_station",
-            "community_center", "city_hall", "local_government_office", "school", "stadium"
+            "community_center", "city_hall", "local_government_office", "school", "stadium", "civic_center"
         }
 
         if not types_set.intersection(operational_types):
             return False
 
-        if types_set.intersection(disallowed_commercial) and not types_set.intersection({"hospital", "doctor", "medical_clinic", "fire_station", "police"}):
+        # If it has commercial types without possessing genuine emergency services types, reject
+        has_primary_emergency = bool(types_set.intersection({
+            "hospital", "doctor", "medical_clinic", "fire_station", "police", "law_enforcement"
+        }))
+        if types_set.intersection(disallowed_commercial) and not has_primary_emergency:
             return False
 
         cat = need_category.upper()
         if cat in ["MEDICAL", "ROAD_ACCIDENT"]:
-            return bool(types_set.intersection({"hospital", "medical_clinic", "doctor", "health", "pharmacy"}))
+            return bool(types_set.intersection({"hospital", "medical_clinic", "doctor", "health", "pharmacy", "medical_center"}))
         elif cat == "POLICE":
             return bool(types_set.intersection({"police", "law_enforcement"}))
         elif cat == "FIRE":
@@ -440,6 +449,102 @@ class PlacesService:
             return bool(types_set.intersection({"community_center", "city_hall", "local_government_office", "civic_center", "place_of_worship", "school", "stadium", "hospital", "medical_clinic"}))
 
         return True
+
+    @classmethod
+    def is_operational_facility_for_context(
+        cls,
+        place: Any,
+        incident_type: str = "GENERAL",
+        requested_facility_type: Optional[Any] = None,
+    ) -> bool:
+        """
+        Authoritative validation function:
+        is_operational_facility_for_context(place, incident_type, requested_facility_type)
+
+        Enforces strict operational emergency facility validation:
+        - For FIRE_STATION: VALID only when actual Google Places types support fire station ('fire_station').
+        - For HEALTHCARE / HOSPITAL: VALID only when actual Google Places types support hospital/medical facility
+          ('hospital', 'medical_clinic', 'doctor', 'health', 'pharmacy', 'medical_center').
+        - For POLICE: VALID only when actual Google Places types support police ('police', 'law_enforcement').
+        - For BUS_STATION / TRANSIT: VALID only when actual Google Places types support transit ('bus_station', 'transit_station', 'train_station', etc.).
+        - For SHELTER: VALID only when actual Google Places types support shelter/evacuation facility
+          ('community_center', 'city_hall', 'local_government_office', 'school', 'stadium', 'civic_center').
+
+        Commercial businesses, shops, decorators, lighting stores, electricians, salons, tailors, restaurants,
+        and general businesses are strictly INVALID.
+        NEVER silently coerces INVALID -> requested facility type.
+        """
+        if not place:
+            return False
+
+        # Extract place types and destination type whether dict or object
+        if isinstance(place, dict):
+            raw_types = place.get("google_place_types") or place.get("types") or []
+            provider = str(place.get("provider", "")).lower()
+            dest_type = place.get("destination_type")
+        else:
+            raw_types = getattr(place, "google_place_types", []) or []
+            provider = str(getattr(place, "provider", "")).lower()
+            dest_type = getattr(place, "destination_type", None)
+
+        # Allow genuine verified MongoDB collections
+        if "mongodb_healthcare_facilities" in provider:
+            if requested_facility_type:
+                req_str = str(requested_facility_type).upper()
+                return "HEALTH" in req_str or "HOSPITAL" in req_str or "MEDICAL" in req_str
+            return True
+
+        if "mongodb_resources" in provider:
+            if requested_facility_type:
+                req_str = str(requested_facility_type).replace("DestinationType.", "").upper()
+                d_str = str(dest_type).replace("DestinationType.", "").upper()
+                return req_str == d_str
+            return True
+
+        if not raw_types:
+            # If raw_types is not provided (e.g. pre-normalized mock dict / model)
+            if dest_type is not None:
+                d_str = str(dest_type).replace("DestinationType.", "").strip().upper()
+                if d_str in ["OTHER", ""]:
+                    return False
+                if requested_facility_type is not None:
+                    req_str = str(requested_facility_type).replace("DestinationType.", "").strip().upper()
+                    if req_str in ["FIRE_STATION", "FIRE"]:
+                        return d_str in ["FIRE_STATION", "FIRE"]
+                    elif req_str in ["HEALTHCARE", "HOSPITAL", "MEDICAL"]:
+                        return d_str in ["HEALTHCARE", "HOSPITAL", "MEDICAL"]
+                    elif req_str in ["POLICE", "POLICE_STATION"]:
+                        return d_str in ["POLICE", "POLICE_STATION"]
+                    elif req_str in ["BUS_STATION", "TRANSIT"]:
+                        return d_str in ["BUS_STATION", "TRANSIT"]
+                    elif req_str in ["SHELTER", "SAFE_ASSEMBLY_AREA"]:
+                        return d_str in ["SHELTER", "SAFE_ASSEMBLY_AREA"]
+                return True
+            return False
+
+        types_set = set(str(t).lower() for t in raw_types)
+
+        # Verify against general type validity
+        if not cls._is_valid_place_type(raw_types, incident_type):
+            return False
+
+        # Validate against requested facility type
+        if requested_facility_type is not None:
+            req_str = str(requested_facility_type).replace("DestinationType.", "").strip().upper()
+            if req_str in ["FIRE_STATION", "FIRE"]:
+                return "fire_station" in types_set
+            elif req_str in ["HEALTHCARE", "HOSPITAL", "MEDICAL"]:
+                return bool(types_set.intersection({"hospital", "medical_clinic", "doctor", "health", "pharmacy", "medical_center"}))
+            elif req_str in ["POLICE", "POLICE_STATION"]:
+                return bool(types_set.intersection({"police", "law_enforcement"}))
+            elif req_str in ["BUS_STATION", "TRANSIT"]:
+                return bool(types_set.intersection({"bus_station", "transit_station", "bus_stop", "train_station", "subway_station", "light_rail_station"}))
+            elif req_str in ["SHELTER", "SAFE_ASSEMBLY_AREA"]:
+                return bool(types_set.intersection({"community_center", "city_hall", "local_government_office", "civic_center", "place_of_worship", "school", "stadium"}))
+
+        # If no specific facility type requested, ensure it's not DestinationType.OTHER
+        norm_type = cls.normalize_google_place_type(raw_types)
+        return norm_type != DestinationType.OTHER
 
     @classmethod
     def normalize_google_place_type(cls, place_types: List[str]) -> DestinationType:

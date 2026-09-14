@@ -722,10 +722,16 @@ class SafetyGuidanceAgent:
         need_category = "SHELTER"
         dest_type_primary = DestinationType.SHELTER
 
-        if any(w in context_text for w in [
+        is_fire_emergency = "fire" in str(emergency_type).lower() or any(w in context_text for w in ["fire", "smoke", "flame", "explosion", "burning", "gas leak"])
+        has_medical_need = any(w in context_text for w in [
             "medical", "injury", "injured", "casualt", "bleeding", "unconscious",
-            "heart", "trauma", "ambulance", "accident", "doctor", "hospital", "patient"
-        ]):
+            "heart", "trauma", "ambulance", "accident", "doctor", "hospital", "patient", "burn"
+        ])
+
+        if is_fire_emergency:
+            need_category = "FIRE"
+            dest_type_primary = DestinationType.FIRE_STATION
+        elif has_medical_need:
             need_category = "MEDICAL"
             dest_type_primary = DestinationType.HEALTHCARE
         elif any(w in context_text for w in [
@@ -735,17 +741,13 @@ class SafetyGuidanceAgent:
             need_category = "POLICE"
             dest_type_primary = DestinationType.POLICE
         elif any(w in context_text for w in [
-            "fire", "smoke", "flame", "explosion", "burning", "gas leak"
-        ]):
-            need_category = "FIRE"
-            dest_type_primary = DestinationType.FIRE_STATION
-        elif any(w in context_text for w in [
             "bus", "transit", "evacuation bus", "train station", "metro", "transport"
         ]):
             need_category = "TRANSIT"
             dest_type_primary = DestinationType.BUS_STATION
 
         candidate_dests: List[VerifiedDestination] = []
+        medical_support_dests: List[VerifiedDestination] = []
         seen_coordinates: set = set()
 
         def _coord_key(lat: float, lng: float) -> Tuple[float, float]:
@@ -754,6 +756,7 @@ class SafetyGuidanceAgent:
         # 1. Real-time Live Discovery via PlacesService (Google Places API New searchNearby)
         if origin_lat != 0.0 or origin_lng != 0.0:
             try:
+                # Primary search restricted to the specific need category
                 live_places = await PlacesService.discover_nearby_facilities(
                     lat=origin_lat,
                     lng=origin_lng,
@@ -762,6 +765,10 @@ class SafetyGuidanceAgent:
                     db=db,
                 )
                 for p in live_places:
+                    # Enforce strict operational facility validation
+                    if not PlacesService.is_operational_facility_for_context(p, need_category, dest_type_primary):
+                        continue
+
                     ck = _coord_key(p["latitude"], p["longitude"])
                     if ck in seen_coordinates:
                         continue
@@ -780,6 +787,7 @@ class SafetyGuidanceAgent:
                     dist_km = p.get("distance_km", round(haversine_distance_km(origin_lat, origin_lng, p["latitude"], p["longitude"]), 2))
                     drive_min = p.get("estimated_drive_minutes") or PlacesService.estimate_drive_time_minutes(dist_km)
 
+                    type_label = p_type.value.replace('_', ' ').lower()
                     candidate_dests.append(
                         VerifiedDestination(
                             destination_id=p.get("place_id") or f"PLC-{p['latitude']:.4f}-{p['longitude']:.4f}",
@@ -796,17 +804,59 @@ class SafetyGuidanceAgent:
                             provider=p.get("provider", "places_service"),
                             last_checked=datetime.now(timezone.utc),
                             operational_status="OPERATIONAL",
-                            suitability_reason=f"Real-time verified operational {p_type.value.replace('_', ' ').lower()} ({dist_km:.1f} km, ~{int(drive_min)} min drive).",
+                            suitability_reason=f"Verified operational {type_label} ({dist_km:.1f} km, ~{int(drive_min)} min drive).",
                             contact_phone=p.get("contact_phone"),
                             google_place_types=p.get("google_place_types", []),
                         )
                     )
+
+                # For FIRE incidents, also discover genuine medical support facilities for burn/casualty relief
+                if is_fire_emergency:
+                    med_places = await PlacesService.discover_nearby_facilities(
+                        lat=origin_lat,
+                        lng=origin_lng,
+                        need_category="MEDICAL",
+                        radius_meters=15000,
+                        db=db,
+                    )
+                    for mp in med_places:
+                        if not PlacesService.is_operational_facility_for_context(mp, "FIRE", DestinationType.HEALTHCARE):
+                            continue
+                        mck = _coord_key(mp["latitude"], mp["longitude"])
+                        if mck in seen_coordinates:
+                            continue
+                        seen_coordinates.add(mck)
+
+                        mdist_km = mp.get("distance_km", round(haversine_distance_km(origin_lat, origin_lng, mp["latitude"], mp["longitude"]), 2))
+                        mdrive_min = mp.get("estimated_drive_minutes") or PlacesService.estimate_drive_time_minutes(mdist_km)
+
+                        medical_support_dests.append(
+                            VerifiedDestination(
+                                destination_id=mp.get("place_id") or f"PLC-{mp['latitude']:.4f}-{mp['longitude']:.4f}",
+                                destination_name=mp["name"],
+                                destination_type=DestinationType.HEALTHCARE,
+                                latitude=float(mp["latitude"]),
+                                longitude=float(mp["longitude"]),
+                                address_or_landmark=mp.get("address") or "Live verified hospital location",
+                                distance_km=float(mdist_km),
+                                estimated_drive_minutes=float(mdrive_min),
+                                rating=mp.get("rating"),
+                                open_now=mp.get("open_now"),
+                                place_id=mp.get("place_id"),
+                                provider=mp.get("provider", "places_service"),
+                                last_checked=datetime.now(timezone.utc),
+                                operational_status="OPERATIONAL",
+                                suitability_reason=f"Verified operational hospital for emergency medical support ({mdist_km:.1f} km, ~{int(mdrive_min)} min drive).",
+                                contact_phone=mp.get("contact_phone"),
+                                google_place_types=mp.get("google_place_types", []),
+                            )
+                        )
+
             except Exception as e:
                 logger.warning(f"Live places discovery failed: {e}")
 
-
         # 2. Local Operational Database Query (MongoDB: healthcare_facilities and resources)
-        if need_category == "MEDICAL":
+        if need_category == "MEDICAL" or is_fire_emergency:
             hcf_cursor = db["healthcare_facilities"].find({
                 "status": {"$nin": ["CLOSED", "INACTIVE", "DECOMMISSIONED", "DESTROYED"]}
             })
@@ -826,25 +876,27 @@ class SafetyGuidanceAgent:
                         cap = doc.get("capacity") or {}
                         tot_cap = float(cap.get("total") or doc.get("total_beds", 0.0))
                         avail_cap = float(cap.get("available") or doc.get("available_beds", tot_cap))
-                        candidate_dests.append(
-                            VerifiedDestination(
-                                destination_id=doc.get("facility_id") or str(doc.get("_id", "HCF-001")),
-                                destination_name=doc.get("name", "Verified Healthcare Facility"),
-                                destination_type=DestinationType.HEALTHCARE,
-                                latitude=lat_f,
-                                longitude=lng_f,
-                                address_or_landmark=doc.get("location", {}).get("address") or doc.get("address") or "Operational Medical Center",
-                                distance_km=round(dist, 2),
-                                estimated_drive_minutes=drive_min,
-                                available_capacity=avail_cap if avail_cap > 0 else None,
-                                total_capacity=tot_cap if tot_cap > 0 else None,
-                                operational_status="OPERATIONAL",
-                                provider="mongodb_healthcare_facilities",
-                                last_checked=datetime.now(timezone.utc),
-                                suitability_reason=f"Operational healthcare center ({dist:.1f} km, ~{int(drive_min)} min drive).",
-                                contact_phone=doc.get("contact_info", {}).get("phone") or doc.get("phone"),
-                            )
+                        hcf_dest = VerifiedDestination(
+                            destination_id=doc.get("facility_id") or str(doc.get("_id", "HCF-001")),
+                            destination_name=doc.get("name", "Verified Healthcare Facility"),
+                            destination_type=DestinationType.HEALTHCARE,
+                            latitude=lat_f,
+                            longitude=lng_f,
+                            address_or_landmark=doc.get("location", {}).get("address") or doc.get("address") or "Operational Medical Center",
+                            distance_km=round(dist, 2),
+                            estimated_drive_minutes=drive_min,
+                            available_capacity=avail_cap if avail_cap > 0 else None,
+                            total_capacity=tot_cap if tot_cap > 0 else None,
+                            operational_status="OPERATIONAL",
+                            provider="mongodb_healthcare_facilities",
+                            last_checked=datetime.now(timezone.utc),
+                            suitability_reason=f"Operational healthcare center ({dist:.1f} km, ~{int(drive_min)} min drive).",
+                            contact_phone=doc.get("contact_info", {}).get("phone") or doc.get("phone"),
                         )
+                        if need_category == "MEDICAL":
+                            candidate_dests.append(hcf_dest)
+                        elif is_fire_emergency:
+                            medical_support_dests.append(hcf_dest)
 
         # Query resources collection for matching operational physical facility destinations (e.g., shelters, police, fire, assembly points)
         if need_category in ["SHELTER", "TRANSIT", "POLICE", "FIRE"]:
@@ -909,6 +961,16 @@ class SafetyGuidanceAgent:
                             )
                         )
 
+        # Truthful empty handling: If no primary candidates exist for FIRE
+        if is_fire_emergency and not candidate_dests:
+            # If casualties were explicitly reported and medical support exists, offer healthcare
+            if has_medical_need and medical_support_dests:
+                candidate_dests = medical_support_dests
+                dest_type_primary = DestinationType.HEALTHCARE
+            else:
+                # Strictly truthful no-fire-station-found response (NEVER substitute shops/businesses)
+                return None, "No verified fire station was found within the current search area.", []
+
         if not candidate_dests:
             return None, "NO_VERIFIED_DESTINATION_AVAILABLE", []
 
@@ -931,10 +993,10 @@ class SafetyGuidanceAgent:
                     if cand_route.route_status in (RouteStatus.CALCULATED, RouteStatus.RESTRICTED) and cand_route.estimated_duration_minutes > 0:
                         cand.estimated_drive_minutes = float(cand_route.estimated_duration_minutes)
                         cand.distance_km = float(cand_route.distance_km)
-                        p_name = cand.destination_name
+                        type_name = cand.destination_type.value.replace('_', ' ').lower()
                         restriction_note = " (access restriction warning)" if cand_route.route_status == RouteStatus.RESTRICTED else ""
                         cand.suitability_reason = (
-                            f"Verified road-accessible {cand.destination_type.value.replace('_', ' ').lower()} "
+                            f"Verified road-accessible {type_name} "
                             f"({cand.distance_km:.1f} km road distance, ~{int(cand.estimated_drive_minutes)} min drive){restriction_note}."
                         )
                     elif cand_route.route_status == RouteStatus.ROUTE_UNSAFE:
@@ -947,7 +1009,13 @@ class SafetyGuidanceAgent:
         candidate_dests.sort(key=lambda d: (d.estimated_drive_minutes or 999.0, d.distance_km))
 
         primary_dest = candidate_dests[0]
-        alternatives = candidate_dests[1:4]  # Up to 3 alternative nearby facilities
+
+        # Compile and strictly filter nearby alternatives
+        raw_alternatives = candidate_dests[1:4] + ([m for m in medical_support_dests if m.destination_id != primary_dest.destination_id][:2] if is_fire_emergency else [])
+        valid_alternatives: List[VerifiedDestination] = []
+        for alt in raw_alternatives:
+            if PlacesService.is_operational_facility_for_context(alt, emergency_type):
+                valid_alternatives.append(alt)
 
         dest_type_str = primary_dest.destination_type.value.replace('_', ' ').lower()
         est_drive_str = f", ~{int(primary_dest.estimated_drive_minutes)} min drive" if primary_dest.estimated_drive_minutes and primary_dest.estimated_drive_minutes < 500 else ""
@@ -956,7 +1024,7 @@ class SafetyGuidanceAgent:
             f"({primary_dest.distance_km:.1f} km{est_drive_str}) with confirmed road routing."
         )
 
-        return primary_dest, reason_str, alternatives
+        return primary_dest, reason_str, valid_alternatives[:3]
 
     @classmethod
     def _determine_risk_level(cls, report_doc: Dict[str, Any], visual_evidence: Dict[str, Any]) -> SeverityLevel:
