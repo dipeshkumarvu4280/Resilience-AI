@@ -3,6 +3,7 @@ import { loadGoogleMaps, hasGoogleMapsApiKey } from '../../utils/googleMapsLoade
 import { getActiveHotspots } from '../../services/api';
 import type { PublicEmergencyHotspot, SeverityLevel } from '../../types';
 import { Map as MapIcon, Radio, Layers, Globe } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 const PREVIEW_LIGHT_STYLES: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#cce5ff' }] },
@@ -14,6 +15,7 @@ const PREVIEW_LIGHT_STYLES: google.maps.MapTypeStyle[] = [
 ];
 
 export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '' }) => {
+  const { t } = useLanguage();
   const [hotspots, setHotspots] = useState<PublicEmergencyHotspot[]>([]);
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [loading, setLoading] = useState<boolean>(true);
@@ -253,17 +255,17 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
           <div>
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs font-black uppercase tracking-wider text-slate-900">
-                LIVE SITUATIONAL MAP
+                {t('map.title', 'LIVE SITUATIONAL MAP')}
               </span>
               <span className="inline-flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300/80 shadow-2xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>LIVE STREAM</span>
+                <span>{t('map.liveStream', 'LIVE STREAM')}</span>
               </span>
             </div>
             <div className="text-[10px] text-slate-500 font-sans font-medium flex items-center gap-1.5 mt-0.5">
-              <span>Google Maps Platform</span>
+              <span>{t('map.platform', 'Google Maps Platform')}</span>
               <span className="text-slate-300">•</span>
-              <span className="hidden sm:inline">Real-Time Incident Spatial View</span>
+              <span className="hidden sm:inline">{t('map.subtitle', 'Real-Time Incident Spatial View')}</span>
             </div>
           </div>
         </div>
@@ -281,7 +283,7 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
               }`}
             >
               <Layers className="w-3 h-3" />
-              <span>Map</span>
+              <span>{t('map.typeRoadmap', 'Map')}</span>
             </button>
             <button
               type="button"
@@ -293,7 +295,7 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
               }`}
             >
               <Globe className="w-3 h-3" />
-              <span>Satellite</span>
+              <span>{t('map.typeSatellite', 'Satellite')}</span>
             </button>
           </div>
 
@@ -310,7 +312,10 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
               }`}
             />
             <span>
-              {hotspots.length} ACTIVE HOTSPOT{hotspots.length === 1 ? '' : 'S'}
+              {hotspots.length}{' '}
+              {hotspots.length === 1
+                ? t('map.activeHotspotSingular', 'ACTIVE HOTSPOT')
+                : t('map.activeHotspots', 'ACTIVE HOTSPOTS')}
             </span>
           </div>
         </div>
@@ -328,10 +333,10 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
             </div>
             <div>
               <div className="font-mono text-[11px] font-bold uppercase text-slate-900">
-                0 Active Emergency Hotspots
+                {t('map.noHotspotsTitle', '0 Active Emergency Hotspots')}
               </div>
               <p className="text-[11px] font-sans text-slate-600 leading-tight mt-0.5">
-                No active emergency hotspots currently reported. Live citizen emergencies will appear automatically.
+                {t('map.noHotspotsDesc', 'No active emergency hotspots currently reported. Live citizen emergencies will appear automatically.')}
               </p>
             </div>
           </div>
@@ -342,10 +347,12 @@ export const LiveMapPreview: React.FC<{ className?: string }> = ({ className = '
       <div className="px-4 py-2 bg-slate-50/95 border-t border-slate-200 flex items-center justify-between text-[11px] font-mono text-slate-500 z-10">
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500/90" />
-          <span className="text-slate-700 font-bold text-[10px] tracking-wide uppercase">Incident Spatial Visualizer</span>
+          <span className="text-slate-700 font-bold text-[10px] tracking-wide uppercase">
+            {t('map.visualizer', 'Incident Spatial Visualizer')}
+          </span>
         </div>
         <div className="text-[10px] text-slate-500 font-sans font-medium">
-          Interactive • Pan & zoom to inspect operational sectors
+          {t('map.interactiveHint', 'Interactive • Pan & zoom to inspect operational sectors')}
         </div>
       </div>
     </div>

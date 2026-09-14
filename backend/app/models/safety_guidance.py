@@ -164,6 +164,7 @@ class CitizenSafetyGuidance(BaseModel):
     trigger_event_id: Optional[str] = None
     change_reason: Optional[str] = None
     is_stale: bool = False
+    language: Optional[Dict[str, Any]] = None
     history: List[Dict[str, Any]] = Field(default_factory=list)
 
 
@@ -171,6 +172,7 @@ class CitizenSafetyGuidanceResponse(BaseModel):
     success: bool = True
     guidance: Optional[CitizenSafetyGuidance] = None
     secure_access_token: Optional[str] = None
+    language: Optional[Dict[str, Any]] = None
     message: str = "Safety guidance retrieved successfully."
     latest_active_token: Optional[str] = None
 

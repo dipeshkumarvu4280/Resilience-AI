@@ -603,15 +603,15 @@ async def acknowledge_report(
     except Exception as notif_err:
         logger.warning(f"Notification dispatch notice for report acknowledgement {clean_id}: {notif_err}")
 
-    # Section 13: Web Push Notification for Report Acceptance/Acknowledgement
+    # Section 13: Web Push Notification for Report Acknowledgement
     try:
         from app.services.notification.web_push_service import WebPushService
         from app.models.enums import SafetyNotificationType
         await WebPushService.notify_citizen_report_status_update(
             report_id=clean_id,
-            notification_type=SafetyNotificationType.REPORT_ACCEPTED,
+            notification_type=SafetyNotificationType.REPORT_ACKNOWLEDGED,
             title="Emergency Report Update",
-            body=f"Your emergency report {clean_id} has been reviewed and accepted.",
+            body=f"Your emergency report {clean_id} has been acknowledged and is now under review.",
             event_id=f"EVT-ACK-PUSH-{clean_id}",
             db=db,
         )
@@ -1062,6 +1062,31 @@ async def update_report_status(
         )
     except Exception as notif_err:
         logger.warning(f"Notification dispatch notice for report status change {clean_id}: {notif_err}")
+
+    # Citizen Web Push Notification on Status Update
+    try:
+        from app.services.notification.web_push_service import WebPushService
+        from app.models.enums import SafetyNotificationType
+        if payload.status == ReportStatus.ACKNOWLEDGED:
+            await WebPushService.notify_citizen_report_status_update(
+                report_id=clean_id,
+                notification_type=SafetyNotificationType.REPORT_ACKNOWLEDGED,
+                title="Emergency Report Update",
+                body=f"Your emergency report {clean_id} has been acknowledged and is now under review.",
+                event_id=f"EVT-ACK-PUSH-{clean_id}",
+                db=db,
+            )
+        elif payload.status in [ReportStatus.ACTION_REQUIRED, ReportStatus.UNDER_ASSESSMENT]:
+            await WebPushService.notify_citizen_report_status_update(
+                report_id=clean_id,
+                notification_type=SafetyNotificationType.REPORT_ACCEPTED,
+                title="Emergency Report Accepted",
+                body=f"Your emergency report {clean_id} has been accepted and assigned for response coordination.",
+                event_id=f"EVT-ACCEPT-PUSH-{clean_id}-{payload.status.value}",
+                db=db,
+            )
+    except Exception as push_err:
+        logger.warning(f"Web push dispatch notice for status transition on {clean_id}: {push_err}")
 
     return parse_report_document(updated_doc or doc)
 

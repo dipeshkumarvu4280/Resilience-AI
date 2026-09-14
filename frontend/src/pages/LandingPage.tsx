@@ -4,6 +4,8 @@ import { EmergencyEmblem } from '../components/common/EmergencyEmblem';
 import { TacticalBackground } from '../components/layout/TacticalBackground';
 import { LiveMapPreview } from '../components/common/LiveMapPreview';
 import { HowItWorksInteractive } from '../components/landing/HowItWorksInteractive';
+import { LanguageSelector } from '../components/common/LanguageSelector';
+import { useLanguage } from '../context/LanguageContext';
 import {
   Shield,
   Boxes,
@@ -29,19 +31,23 @@ import {
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [activeNav, setActiveNav] = useState<'home' | 'about' | 'how-it-works' | 'operations' | 'contact'>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const roleCards = [
     {
       id: 'officer',
-      title: 'EMERGENCY OFFICER',
-      badge: 'INCIDENT COMMAND',
-      desc: 'Verify corroborated incidents, inspect AI-generated response plans, and authorize field actions.',
+      titleKey: 'roles.officerTitle',
+      defaultTitle: 'EMERGENCY OFFICER',
+      badgeKey: 'roles.officerBadge',
+      defaultBadge: 'INCIDENT COMMAND',
+      descKey: 'roles.officerDesc',
+      defaultDesc: 'Verify corroborated incidents, inspect AI-generated response plans, and authorize field actions.',
       capabilities: [
-        'Multi-Source Corroboration',
-        'Human-in-the-Loop Plan Approval',
-        'Dynamic Replanning Triage',
+        { key: 'roles.officerC1', text: 'Multi-Source Corroboration' },
+        { key: 'roles.officerC2', text: 'Human-in-the-Loop Plan Approval' },
+        { key: 'roles.officerC3', text: 'Dynamic Replanning Triage' },
       ],
       route: '/login/officer',
       icon: Shield,
@@ -50,18 +56,22 @@ export const LandingPage: React.FC = () => {
       badgeClass: 'bg-red-50 text-red-700 border-red-200 group-hover:border-red-300 group-hover:bg-red-100/60',
       checkColor: 'text-red-600',
       hoverBorder: 'hover:border-red-500 hover:shadow-xl hover:shadow-red-500/10 focus-visible:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500/20',
-      ctaText: 'Login to Command Center',
+      ctaKey: 'roles.officerBtn',
+      defaultCta: 'Login to Command Center',
       ctaClass: 'bg-slate-900 hover:bg-[#dc2626] text-white shadow-xs hover:shadow-md hover:shadow-red-500/20',
     },
     {
       id: 'resource-manager',
-      title: 'RESOURCE MANAGER',
-      badge: 'LOGISTICS & ASSETS',
-      desc: 'Track supply depots, verify real inventory balances, and dispatch supplies to approved emergency tasks.',
+      titleKey: 'roles.rmTitle',
+      defaultTitle: 'RESOURCE MANAGER',
+      badgeKey: 'roles.rmBadge',
+      defaultBadge: 'LOGISTICS & ASSETS',
+      descKey: 'roles.rmDesc',
+      defaultDesc: 'Track supply depots, verify real inventory balances, and dispatch supplies to approved emergency tasks.',
       capabilities: [
-        'Real Inventory Ledger',
-        'Vehicle & Depot Tracking',
-        'Task Dispatch Operations',
+        { key: 'roles.rmC1', text: 'Real Inventory Ledger' },
+        { key: 'roles.rmC2', text: 'Vehicle & Depot Tracking' },
+        { key: 'roles.rmC3', text: 'Task Dispatch Operations' },
       ],
       route: '/login/resource-manager',
       icon: Boxes,
@@ -70,18 +80,22 @@ export const LandingPage: React.FC = () => {
       badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 group-hover:border-emerald-300 group-hover:bg-emerald-100/60',
       checkColor: 'text-emerald-600',
       hoverBorder: 'hover:border-emerald-500 hover:shadow-xl hover:shadow-emerald-500/10 focus-visible:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500/20',
-      ctaText: 'Login to Resource Operations',
+      ctaKey: 'roles.rmBtn',
+      defaultCta: 'Login to Resource Operations',
       ctaClass: 'bg-slate-900 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md hover:shadow-emerald-500/20',
     },
     {
       id: 'volunteer',
-      title: 'VOLUNTEER RESPONDER',
-      badge: 'COMMUNITY NETWORK',
-      desc: 'Join local response teams, review proximity-based missions, and accept verified tasks in your zone.',
+      titleKey: 'roles.volTitle',
+      defaultTitle: 'VOLUNTEER RESPONDER',
+      badgeKey: 'roles.volBadge',
+      defaultBadge: 'COMMUNITY NETWORK',
+      descKey: 'roles.volDesc',
+      defaultDesc: 'Join local response teams, review proximity-based missions, and accept verified tasks in your zone.',
       capabilities: [
-        'Skill & Zone Registration',
-        'Task Acceptance Workflow',
-        'Field Execution & Updates',
+        { key: 'roles.volC1', text: 'Skill & Zone Registration' },
+        { key: 'roles.volC2', text: 'Task Acceptance Workflow' },
+        { key: 'roles.volC3', text: 'Field Execution & Updates' },
       ],
       route: '/login/volunteer',
       registerRoute: '/register/volunteer',
@@ -91,18 +105,24 @@ export const LandingPage: React.FC = () => {
       badgeClass: 'bg-blue-50 text-blue-700 border-blue-200 group-hover:border-blue-300 group-hover:bg-blue-100/60',
       checkColor: 'text-blue-600',
       hoverBorder: 'hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/10 focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20',
-      ctaText: 'Login to Volunteer Portal',
+      ctaKey: 'roles.volBtn',
+      defaultCta: 'Login to Volunteer Portal',
+      registerKey: 'roles.volRegisterBtn',
+      defaultRegister: 'Register as Volunteer',
       ctaClass: 'bg-slate-900 hover:bg-blue-700 text-white shadow-xs hover:shadow-md hover:shadow-blue-500/20',
     },
     {
       id: 'admin',
-      title: 'SYSTEM ADMIN',
-      badge: 'GOVERNANCE & AUDIT',
-      desc: 'Platform governance, role-based access control, security policies, and immutable audit inspection.',
+      titleKey: 'roles.adminTitle',
+      defaultTitle: 'SYSTEM ADMIN',
+      badgeKey: 'roles.adminBadge',
+      defaultBadge: 'GOVERNANCE & AUDIT',
+      descKey: 'roles.adminDesc',
+      defaultDesc: 'Platform governance, role-based access control, security policies, and immutable audit inspection.',
       capabilities: [
-        'RBAC & User Governance',
-        'Immutable Audit Trail Review',
-        'System Health & Config',
+        { key: 'roles.adminC1', text: 'RBAC & User Governance' },
+        { key: 'roles.adminC2', text: 'Immutable Audit Trail Review' },
+        { key: 'roles.adminC3', text: 'System Health & Config' },
       ],
       route: '/login/admin',
       icon: Lock,
@@ -111,50 +131,63 @@ export const LandingPage: React.FC = () => {
       badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 group-hover:border-purple-300 group-hover:bg-purple-100/60',
       checkColor: 'text-purple-600',
       hoverBorder: 'hover:border-purple-500 hover:shadow-xl hover:shadow-purple-500/10 focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/20',
-      ctaText: 'Login to System Admin',
+      ctaKey: 'roles.adminBtn',
+      defaultCta: 'Login to System Admin',
       ctaClass: 'bg-slate-900 hover:bg-purple-700 text-white shadow-xs hover:shadow-md hover:shadow-purple-500/20',
     },
   ];
 
   const coreUSPs = [
     {
-      title: 'Multimodal Evidence & Gemini Vision',
-      desc: 'Citizens capture real-world photo evidence bound to GPS coordinates. Gemini Vision extracts structured hazard observations for advisory officer review.',
+      titleKey: 'usp.c1Title',
+      defaultTitle: 'Multimodal Evidence & Gemini Vision',
+      descKey: 'usp.c1Desc',
+      defaultDesc: 'Citizens capture real-world photo evidence bound to GPS coordinates. Gemini Vision extracts structured hazard observations for advisory officer review.',
       icon: Sparkles,
       iconColor: 'text-purple-600 bg-purple-50 border-purple-200 group-hover:bg-purple-100 group-hover:border-purple-400',
       hoverBorder: 'hover:border-purple-400 hover:shadow-xl hover:shadow-purple-500/10',
     },
     {
-      title: 'Real Google Places & Road Routing',
-      desc: 'Discovers verified physical hospitals and shelters via Google Places API and calculates true road-network routes with turn-by-turn geometry and ETA.',
+      titleKey: 'usp.c2Title',
+      defaultTitle: 'Real Google Places & Road Routing',
+      descKey: 'usp.c2Desc',
+      defaultDesc: 'Discovers verified physical hospitals and shelters via Google Places API and calculates true road-network routes with turn-by-turn geometry and ETA.',
       icon: Navigation,
       iconColor: 'text-blue-600 bg-blue-50 border-blue-200 group-hover:bg-blue-100 group-hover:border-blue-400',
       hoverBorder: 'hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10',
     },
     {
-      title: '9-Agent Dependency-Aware Orchestrator',
-      desc: 'Nine specialized deterministic agents coordinate priority, needs, resources, routes, shelters, healthcare, volunteers, and conflicts simultaneously.',
+      titleKey: 'usp.c3Title',
+      defaultTitle: '9-Agent Dependency-Aware Orchestrator',
+      descKey: 'usp.c3Desc',
+      defaultDesc: 'Nine specialized deterministic agents coordinate priority, needs, resources, routes, shelters, healthcare, volunteers, and conflicts simultaneously.',
       icon: Cpu,
       iconColor: 'text-indigo-600 bg-indigo-50 border-indigo-200 group-hover:bg-indigo-100 group-hover:border-indigo-400',
       hoverBorder: 'hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-500/10',
     },
     {
-      title: 'Human Authority & Explainable Plans',
-      desc: 'AI recommends; human officers decide. All response allocations require explicit officer approval or modification before field tasks are generated.',
+      titleKey: 'usp.c4Title',
+      defaultTitle: 'Human Authority & Explainable Plans',
+      descKey: 'usp.c4Desc',
+      defaultDesc: 'AI recommends; human officers decide. All response allocations require explicit officer approval or modification before field tasks are generated.',
       icon: UserCheck,
       iconColor: 'text-red-600 bg-red-50 border-red-200 group-hover:bg-red-100 group-hover:border-red-400',
       hoverBorder: 'hover:border-red-400 hover:shadow-xl hover:shadow-red-500/10',
     },
     {
-      title: 'Dynamic Replanning & What-If Simulations',
-      desc: 'Automatically computes allocation diffs when roads or depots become blocked, and allows isolated what-if scenario testing without mutating live databases.',
+      titleKey: 'usp.c5Title',
+      defaultTitle: 'Dynamic Replanning & What-If Simulations',
+      descKey: 'usp.c5Desc',
+      defaultDesc: 'Automatically computes allocation diffs when roads or depots become blocked, and allows isolated what-if scenario testing without mutating live databases.',
       icon: FlaskConical,
       iconColor: 'text-teal-600 bg-teal-50 border-teal-200 group-hover:bg-teal-100 group-hover:border-teal-400',
       hoverBorder: 'hover:border-teal-400 hover:shadow-xl hover:shadow-teal-500/10',
     },
     {
-      title: 'Multi-Channel Alerting & Tracking',
-      desc: 'Instant browser Web Push for affected community members and transparent status updates via WhatsApp by incident report ID.',
+      titleKey: 'usp.c6Title',
+      defaultTitle: 'Multi-Channel Alerting & Tracking',
+      descKey: 'usp.c6Desc',
+      defaultDesc: 'Instant browser Web Push for affected community members and transparent status updates via WhatsApp by incident report ID.',
       icon: Bell,
       iconColor: 'text-emerald-600 bg-emerald-50 border-emerald-200 group-hover:bg-emerald-100 group-hover:border-emerald-400',
       hoverBorder: 'hover:border-emerald-400 hover:shadow-xl hover:shadow-emerald-500/10',
@@ -195,7 +228,7 @@ export const LandingPage: React.FC = () => {
                 : 'text-slate-700 border-transparent hover:text-red-700 hover:bg-red-50/60 hover:border-red-200/80 hover:-translate-y-0.5'
             } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 focus-visible:border-red-400 focus-visible:bg-red-50/60 focus-visible:text-red-700`}
           >
-            Home
+            {t('nav.home', 'Home')}
           </button>
           <button
             onClick={() => {
@@ -208,7 +241,7 @@ export const LandingPage: React.FC = () => {
                 : 'text-slate-700 border-transparent hover:text-red-700 hover:bg-red-50/60 hover:border-red-200/80 hover:-translate-y-0.5'
             } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 focus-visible:border-red-400 focus-visible:bg-red-50/60 focus-visible:text-red-700`}
           >
-            About
+            {t('nav.about', 'About')}
           </button>
           <button
             onClick={() => {
@@ -221,7 +254,7 @@ export const LandingPage: React.FC = () => {
                 : 'text-slate-700 border-transparent hover:text-red-700 hover:bg-red-50/60 hover:border-red-200/80 hover:-translate-y-0.5'
             } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 focus-visible:border-red-400 focus-visible:bg-red-50/60 focus-visible:text-red-700`}
           >
-            How It Works
+            {t('nav.howItWorks', 'How It Works')}
           </button>
           <button
             onClick={() => {
@@ -234,7 +267,7 @@ export const LandingPage: React.FC = () => {
                 : 'text-slate-700 border-transparent hover:text-red-700 hover:bg-red-50/60 hover:border-red-200/80 hover:-translate-y-0.5'
             } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 focus-visible:border-red-400 focus-visible:bg-red-50/60 focus-visible:text-red-700`}
           >
-            Operational Portals
+            {t('nav.operations', 'Operational Portals')}
           </button>
           <button
             onClick={() => {
@@ -247,17 +280,19 @@ export const LandingPage: React.FC = () => {
                 : 'text-slate-700 border-transparent hover:text-red-700 hover:bg-red-50/60 hover:border-red-200/80 hover:-translate-y-0.5'
             } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 focus-visible:border-red-400 focus-visible:bg-red-50/60 focus-visible:text-red-700`}
           >
-            Contact
+            {t('nav.contact', 'Contact')}
           </button>
         </nav>
 
-        {/* Right: Actions + Mobile Menu Toggle */}
+        {/* Right: Actions + Language Selector + Mobile Menu Toggle */}
         <div className="flex items-center gap-2 sm:gap-3">
+          <LanguageSelector variant="navbar" />
+
           <button
             onClick={() => scrollToSection('operations')}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 hover:border-slate-400 font-sans text-xs font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 hover:border-slate-400 font-sans text-xs font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 min-h-[40px]"
           >
-            <span>Enter Operations</span>
+            <span>{t('nav.operationsBtn', 'Operations')}</span>
             <ExternalLink className="w-3 h-3 text-slate-500" />
           </button>
 
@@ -266,7 +301,7 @@ export const LandingPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-red-500/20 hover:-translate-y-0.5 min-h-[40px] cursor-pointer touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
           >
             <Siren className="w-3.5 h-3.5" />
-            <span className="whitespace-nowrap">Report Emergency</span>
+            <span className="whitespace-nowrap">{t('hero.reportBtn', 'Report Emergency Now')}</span>
           </button>
 
           {/* Mobile Hamburger Button */}
@@ -295,6 +330,10 @@ export const LandingPage: React.FC = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="pb-2 border-b border-slate-100">
+              <LanguageSelector variant="compact" className="w-full" />
+            </div>
+
             <nav className="space-y-2 text-sm font-bold text-slate-800 font-sans">
               <button
                 onClick={() => {
@@ -308,7 +347,7 @@ export const LandingPage: React.FC = () => {
                     : 'text-slate-700 border-transparent hover:bg-slate-50 hover:border-slate-200 active:bg-red-50 active:text-red-700'
                 }`}
               >
-                <span>Home</span>
+                <span>{t('nav.home', 'Home')}</span>
                 <ArrowRight className={`w-4 h-4 ${activeNav === 'home' ? 'text-[#dc2626]' : 'text-slate-400'}`} />
               </button>
               <button
@@ -322,7 +361,7 @@ export const LandingPage: React.FC = () => {
                     : 'text-slate-700 border-transparent hover:bg-slate-50 hover:border-slate-200 active:bg-red-50 active:text-red-700'
                 }`}
               >
-                <span>About Platform</span>
+                <span>{t('nav.about', 'About Platform')}</span>
                 <ArrowRight className={`w-4 h-4 ${activeNav === 'about' ? 'text-[#dc2626]' : 'text-slate-400'}`} />
               </button>
               <button
@@ -336,7 +375,7 @@ export const LandingPage: React.FC = () => {
                     : 'text-slate-700 border-transparent hover:bg-slate-50 hover:border-slate-200 active:bg-red-50 active:text-red-700'
                 }`}
               >
-                <span>How It Works</span>
+                <span>{t('nav.howItWorks', 'How It Works')}</span>
                 <ArrowRight className={`w-4 h-4 ${activeNav === 'how-it-works' ? 'text-[#dc2626]' : 'text-slate-400'}`} />
               </button>
               <button
@@ -350,7 +389,7 @@ export const LandingPage: React.FC = () => {
                     : 'text-slate-700 border-transparent hover:bg-slate-50 hover:border-slate-200 active:bg-red-50 active:text-red-700'
                 }`}
               >
-                <span>Operational Portals</span>
+                <span>{t('nav.operations', 'Operational Portals')}</span>
                 <ArrowRight className={`w-4 h-4 ${activeNav === 'operations' ? 'text-[#dc2626]' : 'text-slate-400'}`} />
               </button>
               <button
@@ -364,39 +403,39 @@ export const LandingPage: React.FC = () => {
                     : 'text-slate-700 border-transparent hover:bg-slate-50 hover:border-slate-200 active:bg-red-50 active:text-red-700'
                 }`}
               >
-                <span>Contact</span>
+                <span>{t('nav.contact', 'Contact')}</span>
                 <ArrowRight className={`w-4 h-4 ${activeNav === 'contact' ? 'text-[#dc2626]' : 'text-slate-400'}`} />
               </button>
             </nav>
 
             <div className="pt-4 border-t border-slate-200 space-y-3">
               <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
-                Direct Operational Portals
+                {t('nav.directPortals', 'Direct Operational Portals')}
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs font-bold">
                 <button
                   onClick={() => { setMobileMenuOpen(false); navigate('/login/officer'); }}
-                  className="p-3 rounded-xl bg-red-50 text-red-800 border border-red-200 hover:border-red-400 hover:shadow-md transition-all text-center"
+                  className="p-3 rounded-xl bg-red-50 text-red-800 border border-red-200 hover:border-red-400 hover:shadow-md transition-all text-center cursor-pointer"
                 >
-                  Officer Command
+                  {t('roles.officerTitle', 'Officer Command')}
                 </button>
                 <button
                   onClick={() => { setMobileMenuOpen(false); navigate('/login/resource-manager'); }}
-                  className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 hover:border-emerald-400 hover:shadow-md transition-all text-center"
+                  className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 hover:border-emerald-400 hover:shadow-md transition-all text-center cursor-pointer"
                 >
-                  Resource Manager
+                  {t('roles.rmTitle', 'Resource Manager')}
                 </button>
                 <button
                   onClick={() => { setMobileMenuOpen(false); navigate('/login/volunteer'); }}
-                  className="p-3 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 hover:border-blue-400 hover:shadow-md transition-all text-center"
+                  className="p-3 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 hover:border-blue-400 hover:shadow-md transition-all text-center cursor-pointer"
                 >
-                  Volunteer Portal
+                  {t('roles.volTitle', 'Volunteer Portal')}
                 </button>
                 <button
                   onClick={() => { setMobileMenuOpen(false); navigate('/login/admin'); }}
-                  className="p-3 rounded-xl bg-purple-50 text-purple-800 border border-purple-200 hover:border-purple-400 hover:shadow-md transition-all text-center"
+                  className="p-3 rounded-xl bg-purple-50 text-purple-800 border border-purple-200 hover:border-purple-400 hover:shadow-md transition-all text-center cursor-pointer"
                 >
-                  System Admin
+                  {t('roles.adminTitle', 'System Admin')}
                 </button>
               </div>
             </div>
@@ -415,49 +454,48 @@ export const LandingPage: React.FC = () => {
             {/* Live System Badge */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-900 font-mono text-[10px] sm:text-[11px] font-bold tracking-wider shadow-2xs hover:border-emerald-400 transition-colors">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>AI-ASSISTED • HUMAN-VERIFIED EMERGENCY RESPONSE</span>
+              <span>{t('hero.badge', 'AI-ASSISTED • HUMAN-VERIFIED EMERGENCY RESPONSE')}</span>
             </div>
 
             {/* Main Headline */}
             <h1 className="text-3xl xs:text-4xl sm:text-5xl lg:text-[54px] font-black tracking-tight uppercase font-sans text-slate-900 leading-[1.08] sm:leading-[1.06]">
-              STRONGER<br />
-              COMMUNITIES.<br />
+              {t('hero.headline1', 'STRONGER')}<br />
+              {t('hero.headline2', 'COMMUNITIES.')}<br />
               <span className="text-[#dc2626]">
-                FASTER RESPONSE.
+                {t('hero.headline3', 'FASTER RESPONSE.')}
               </span><br />
-              SAFER TOMORROW.
+              {t('hero.headline4', 'SAFER TOMORROW.')}
             </h1>
 
             {/* Subtitle */}
             <p className="text-xs sm:text-base text-slate-700 max-w-lg leading-relaxed font-sans font-medium">
-              An intelligent emergency coordination platform connecting citizen distress observations,
-              geotagged visual evidence, and 9 specialized AI agents into explainable, human-approved response plans.
+              {t('hero.subtitle', 'An intelligent emergency coordination platform connecting citizen distress observations, geotagged visual evidence, and 9 specialized AI agents into explainable, human-approved response plans.')}
             </p>
 
-            {/* CTAs */}
+            {/* CTAs (Same row on desktop/tablet, stacked naturally on mobile) */}
             <div className="pt-2">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
                 {/* Primary CTA */}
                 <button
                   onClick={() => navigate('/report-emergency')}
-                  className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-xs sm:text-sm font-bold tracking-wide shadow-sm hover:shadow-xl hover:shadow-red-500/20 hover:-translate-y-0.5 transition-all duration-200 min-h-[44px] touch-manipulation cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                  className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-xs sm:text-sm font-bold tracking-wide shadow-sm hover:shadow-xl hover:shadow-red-500/20 hover:-translate-y-0.5 transition-all duration-200 min-h-[44px] touch-manipulation cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 shrink-0"
                 >
                   <Siren className="w-4 h-4" />
-                  <span>REPORT EMERGENCY</span>
+                  <span>{t('hero.reportBtn', 'Report Emergency Now')}</span>
                 </button>
 
                 {/* Secondary CTA */}
                 <button
                   onClick={() => scrollToSection('how-it-works')}
-                  className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-sans text-xs sm:text-sm font-bold tracking-wide border border-slate-300 hover:border-slate-400 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md min-h-[44px] touch-manipulation cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                  className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-sans text-xs sm:text-sm font-bold tracking-wide border border-slate-300 hover:border-slate-400 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md min-h-[44px] touch-manipulation cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 shrink-0"
                 >
-                  <span>EXPLORE HOW IT WORKS</span>
+                  <span>{t('hero.howProtects', 'How Resilience AI Protects Communities')}</span>
                   <ArrowRight className="w-4 h-4 text-slate-500" />
                 </button>
               </div>
 
               <div className="text-[11px] text-slate-500 font-semibold mt-2.5 pl-1">
-                (Public Reporting • No Account Required • Live GPS Discovery)
+                {t('hero.caption', '(Public Reporting • No Account Required • Live GPS Discovery)')}
               </div>
             </div>
           </div>
@@ -476,14 +514,13 @@ export const LandingPage: React.FC = () => {
             <div className="max-w-3xl mb-8">
               <div className="inline-flex items-center gap-2 font-mono text-[11px] uppercase text-[#dc2626] font-bold tracking-wider mb-2">
                 <Shield className="w-3.5 h-3.5" />
-                <span>WHY RESILIENCE?</span>
+                <span>{t('about.tag', 'WHY RESILIENCE?')}</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black uppercase font-sans tracking-tight text-slate-900">
-                Closing the Critical Gap Between Citizen Distress and Coordinated Action
+                {t('about.title', 'Closing the Critical Gap Between Citizen Distress and Coordinated Action')}
               </h2>
               <p className="text-xs sm:text-sm text-slate-700 mt-2 leading-relaxed">
-                During disasters, unorganized reports overwhelm emergency hotlines while responders struggle with fragmented field data.
-                Resilience unifies real-time citizen signals, AI multimodal analysis, and human command authority into an auditable, transparent operational pipeline.
+                {t('about.desc', 'During disasters, unorganized reports overwhelm emergency hotlines while responders struggle with fragmented field data. Resilience unifies real-time citizen signals, AI multimodal analysis, and human command authority into an auditable, transparent operational pipeline.')}
               </p>
             </div>
 
@@ -495,14 +532,14 @@ export const LandingPage: React.FC = () => {
                     <MapPin className="w-5 h-5 group-hover:scale-105 transition-transform" />
                   </div>
                   <h3 className="font-bold font-sans text-base text-slate-900 group-hover:text-red-950 mb-2 transition-colors">
-                    1. Instant Account-Free Intake
+                    {t('about.p1Title', '1. Instant Account-Free Intake')}
                   </h3>
                   <p className="text-xs text-slate-700 leading-relaxed">
-                    Citizens report emergencies with photos and GPS in seconds. The system provides instant life-safety guidance and real Google road routing to nearby verified shelters or hospitals.
+                    {t('about.p1Desc', 'Citizens report emergencies with photos and GPS in seconds. The system provides instant life-safety guidance and real Google road routing to nearby verified shelters or hospitals.')}
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-300/80 font-mono text-[11px] font-bold text-red-700">
-                  ZERO ACCESS BARRIERS
+                  {t('about.p1Badge', 'ZERO ACCESS BARRIERS')}
                 </div>
               </div>
 
@@ -512,14 +549,14 @@ export const LandingPage: React.FC = () => {
                     <Cpu className="w-5 h-5 group-hover:scale-105 transition-transform" />
                   </div>
                   <h3 className="font-bold font-sans text-base text-slate-900 group-hover:text-indigo-950 mb-2 transition-colors">
-                    2. Explainable 9-Agent Mesh
+                    {t('about.p2Title', '2. Explainable 9-Agent Mesh')}
                   </h3>
                   <p className="text-xs text-slate-700 leading-relaxed">
-                    Nine specialized deterministic agents coordinate priority, needs, resources, routes, shelters, healthcare, volunteers, and conflicts without hallucinations or autonomous dispatch risks.
+                    {t('about.p2Desc', 'Nine specialized deterministic agents coordinate priority, needs, resources, routes, shelters, healthcare, volunteers, and conflicts without hallucinations or autonomous dispatch risks.')}
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-300/80 font-mono text-[11px] font-bold text-indigo-700">
-                  DETERMINISTIC REASONING
+                  {t('about.p2Badge', 'DETERMINISTIC REASONING')}
                 </div>
               </div>
 
@@ -529,14 +566,14 @@ export const LandingPage: React.FC = () => {
                     <UserCheck className="w-5 h-5 group-hover:scale-105 transition-transform" />
                   </div>
                   <h3 className="font-bold font-sans text-base text-slate-900 group-hover:text-emerald-950 mb-2 transition-colors">
-                    3. Human Authority & Traceability
+                    {t('about.p3Title', '3. Human Authority & Traceability')}
                   </h3>
                   <p className="text-xs text-slate-700 leading-relaxed">
-                    Emergency officers retain final authority to approve or adjust plans. Changes trigger dynamic replanning diffs, while all actions are logged to an immutable audit trail.
+                    {t('about.p3Desc', 'Emergency officers retain final authority to approve or adjust plans. Changes trigger dynamic replanning diffs, while all actions are logged to an immutable audit trail.')}
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-300/80 font-mono text-[11px] font-bold text-emerald-700">
-                  100% AUDITABLE ACTION
+                  {t('about.p3Badge', '100% AUDITABLE ACTION')}
                 </div>
               </div>
             </div>
@@ -554,13 +591,13 @@ export const LandingPage: React.FC = () => {
         <section className="mb-20">
           <div className="text-left mb-8">
             <div className="font-mono text-[11px] uppercase text-[#dc2626] font-bold tracking-wider mb-1">
-              ENGINEERED FOR RESILIENCE
+              {t('usp.tag', 'ENGINEERED FOR RESILIENCE')}
             </div>
             <h2 className="text-2xl sm:text-3xl font-black uppercase font-sans tracking-tight text-slate-900">
-              Core Platform Capabilities
+              {t('usp.title', 'Core Platform Capabilities')}
             </h2>
             <p className="text-xs sm:text-sm text-slate-700 mt-1 max-w-xl font-medium">
-              Engineered to operate reliably during severe crises with uncompromising audit standards and human oversight.
+              {t('usp.desc', 'Engineered to operate reliably during severe crises with uncompromising audit standards and human oversight.')}
             </p>
           </div>
 
@@ -577,10 +614,10 @@ export const LandingPage: React.FC = () => {
                       <IconComp className="w-5 h-5 group-hover:scale-105 transition-transform" />
                     </div>
                     <h3 className="text-base font-bold font-sans tracking-tight text-slate-900 uppercase mb-2">
-                      {usp.title}
+                      {t(usp.titleKey, usp.defaultTitle)}
                     </h3>
                     <p className="text-xs text-slate-700 leading-relaxed">
-                      {usp.desc}
+                      {t(usp.descKey, usp.defaultDesc)}
                     </p>
                   </div>
                 </div>
@@ -595,13 +632,13 @@ export const LandingPage: React.FC = () => {
         <section id="operations" className="scroll-mt-20 mb-20">
           <div className="text-left mb-8">
             <div className="font-mono text-[11px] uppercase text-[#dc2626] font-bold tracking-wider mb-1">
-              AUTHORIZED ACCESS GATEWAYS
+              {t('roles.tag', 'AUTHORIZED ACCESS GATEWAYS')}
             </div>
             <h2 className="text-2xl sm:text-3xl font-black uppercase font-sans tracking-tight text-slate-900">
-              Operational Command Centers
+              {t('roles.title', 'Operational Command Centers')}
             </h2>
             <p className="text-xs sm:text-sm text-slate-700 mt-1 max-w-xl font-medium">
-              Select your role console to authenticate with verified mobile credentials or authorized Google SSO.
+              {t('roles.desc', 'Select your role console to authenticate with verified mobile credentials or authorized Google SSO.')}
             </p>
           </div>
 
@@ -620,27 +657,27 @@ export const LandingPage: React.FC = () => {
                         <RoleIcon className="w-5 h-5 group-hover:scale-105 transition-transform" />
                       </div>
                       <span className={`font-mono text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-md border ${card.badgeClass} transition-colors`}>
-                        {card.badge}
+                        {t(card.badgeKey, card.defaultBadge)}
                       </span>
                     </div>
 
                     {/* Card Title & Description */}
                     <h3 className="text-base font-bold font-sans tracking-tight text-slate-900 uppercase mb-1.5">
-                      {card.title}
+                      {t(card.titleKey, card.defaultTitle)}
                     </h3>
                     <p className="text-xs text-slate-700 leading-relaxed mb-4">
-                      {card.desc}
+                      {t(card.descKey, card.defaultDesc)}
                     </p>
 
                     {/* Capabilities Checklist */}
                     <div className="pt-3 border-t border-slate-200 mb-6 space-y-2">
                       <div className="text-[10px] font-mono uppercase text-slate-500 font-bold tracking-wider mb-1">
-                        Capabilities:
+                        {t('roles.capabilities', 'Capabilities:')}
                       </div>
                       {card.capabilities.map((cap) => (
-                        <div key={cap} className="flex items-center gap-2 text-xs text-slate-800 font-medium">
+                        <div key={cap.key} className="flex items-center gap-2 text-xs text-slate-800 font-medium">
                           <Check className={`w-3.5 h-3.5 flex-shrink-0 ${card.checkColor}`} strokeWidth={2.5} />
-                          <span>{cap}</span>
+                          <span>{t(cap.key, cap.text)}</span>
                         </div>
                       ))}
                     </div>
@@ -652,7 +689,7 @@ export const LandingPage: React.FC = () => {
                       onClick={() => navigate(card.route)}
                       className={`w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-sans text-xs font-bold transition-all duration-200 shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${card.ctaClass}`}
                     >
-                      <span>{card.ctaText}</span>
+                      <span>{t(card.ctaKey, card.defaultCta)}</span>
                       <ArrowRight className="w-3.5 h-3.5 opacity-80 group-hover:translate-x-0.5 transition-transform" />
                     </button>
 
@@ -661,7 +698,7 @@ export const LandingPage: React.FC = () => {
                         onClick={() => navigate(card.registerRoute)}
                         className="w-full inline-flex items-center justify-center py-2 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 hover:border-blue-400 font-sans text-xs font-semibold transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                       >
-                        Register as Volunteer
+                        {t(card.registerKey || 'roles.volRegisterBtn', card.defaultRegister || 'Register as Volunteer')}
                       </button>
                     )}
                   </div>
@@ -678,14 +715,13 @@ export const LandingPage: React.FC = () => {
           <div className="space-y-2 text-center md:text-left">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 font-mono text-[10px] font-bold tracking-wider uppercase">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span>COMMUNITY CRISIS RESPONSE</span>
+              <span>{t('crisis.tag', 'COMMUNITY CRISIS RESPONSE')}</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black uppercase font-sans tracking-tight">
-              Are You Facing an Immediate Emergency?
+              {t('crisis.title', 'Are You Facing an Immediate Emergency?')}
             </h2>
             <p className="text-xs sm:text-sm text-slate-200 max-w-xl leading-relaxed">
-              Submit a report with geotagged photo evidence in under 30 seconds. No account needed.
-              Receive instant life-safety guidance and real-world road navigation immediately.
+              {t('crisis.desc', 'Submit a report with geotagged photo evidence in under 30 seconds. No account needed. Receive instant life-safety guidance and real-world road navigation immediately.')}
             </p>
           </div>
 
@@ -694,7 +730,7 @@ export const LandingPage: React.FC = () => {
             className="px-6 py-4 rounded-2xl bg-[#dc2626] hover:bg-[#b91c1c] text-white font-sans text-sm font-bold uppercase tracking-wider shadow-lg hover:shadow-xl hover:shadow-red-500/30 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2.5 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
           >
             <Siren className="w-5 h-5" />
-            <span>REPORT EMERGENCY NOW</span>
+            <span>{t('crisis.btn', 'REPORT EMERGENCY NOW')}</span>
           </button>
         </section>
 
@@ -706,13 +742,13 @@ export const LandingPage: React.FC = () => {
             <div className="max-w-2xl mb-6">
               <div className="inline-flex items-center gap-2 font-mono text-[11px] uppercase text-[#dc2626] font-bold tracking-wider mb-2">
                 <PhoneCall className="w-3.5 h-3.5" />
-                <span>DIRECT REACHABILITY</span>
+                <span>{t('contact.tag', 'DIRECT REACHABILITY')}</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black uppercase font-sans tracking-tight text-slate-900">
-                Contact
+                {t('contact.title', 'Contact')}
               </h2>
               <p className="text-xs sm:text-sm text-slate-700 mt-1 leading-relaxed">
-                Have questions about Resilience or the emergency coordination platform? Reach out directly to our emergency coordination team.
+                {t('contact.desc', 'Have questions about Resilience or the emergency coordination platform? Reach out directly to our emergency coordination team.')}
               </p>
             </div>
 
@@ -728,7 +764,7 @@ export const LandingPage: React.FC = () => {
                   </div>
                   <div>
                     <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-red-700 block transition-colors">
-                      Emergency Contact 1
+                      {t('contact.c1Label', 'Emergency Contact 1')}
                     </span>
                     <span className="font-mono text-base sm:text-lg font-bold text-slate-900 group-hover:text-[#dc2626] transition-colors">
                       9801338643
@@ -749,7 +785,7 @@ export const LandingPage: React.FC = () => {
                   </div>
                   <div>
                     <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-red-700 block transition-colors">
-                      Emergency Contact 2
+                      {t('contact.c2Label', 'Emergency Contact 2')}
                     </span>
                     <span className="font-mono text-base sm:text-lg font-bold text-slate-900 group-hover:text-[#dc2626] transition-colors">
                       9608149464
@@ -770,7 +806,7 @@ export const LandingPage: React.FC = () => {
                   </div>
                   <div>
                     <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-red-700 block transition-colors">
-                      Emergency Contact 3
+                      {t('contact.c3Label', 'Emergency Contact 3')}
                     </span>
                     <span className="font-mono text-base sm:text-lg font-bold text-slate-900 group-hover:text-[#dc2626] transition-colors">
                       9955230311
@@ -790,20 +826,20 @@ export const LandingPage: React.FC = () => {
           <div className="flex items-center gap-3 font-sans text-xs">
             <div className="flex items-center gap-2 font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-300 font-mono text-[11px]">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>SYSTEM OPERATIONAL</span>
+              <span>{t('status.operational', 'SYSTEM OPERATIONAL')}</span>
             </div>
             <div className="hidden sm:flex items-center gap-2 text-slate-600 text-xs">
-              <span className="font-semibold">Audit Certified</span>
+              <span className="font-semibold">{t('status.certified', 'Audit Certified')}</span>
               <span>•</span>
-              <span className="font-semibold">Human-in-the-Loop</span>
+              <span className="font-semibold">{t('status.hitl', 'Human-in-the-Loop')}</span>
               <span>•</span>
-              <span className="font-semibold">Real-Time Ingestion</span>
+              <span className="font-semibold">{t('status.realtime', 'Real-Time Ingestion')}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2.5 text-slate-700 text-xs sm:text-sm italic font-sans text-center md:text-right font-medium">
             <Activity className="w-4 h-4 text-red-500 flex-shrink-0 animate-pulse" />
-            <span>&ldquo;Resilience is not just a platform, it&apos;s a community.&rdquo;</span>
+            <span>&ldquo;{t('status.quote', "Resilience is not just a platform, it's a community.")}&rdquo;</span>
           </div>
         </div>
       </main>
@@ -814,12 +850,12 @@ export const LandingPage: React.FC = () => {
       <footer className="relative z-10 border-t border-slate-300 bg-slate-100/90 py-8 text-center text-xs font-mono text-slate-600">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            RESILIENCE © 2026 • AI Community Resilience & Emergency Coordination Platform
+            {t('footer.tagline', 'RESILIENCE © 2026 • AI Community Resilience & Emergency Coordination Platform')}
           </div>
           <div className="flex items-center gap-4 text-[11px]">
-            <span>ENTERPRISE COMMAND PLATFORM</span>
+            <span>{t('footer.enterprise', 'ENTERPRISE COMMAND PLATFORM')}</span>
             <span>•</span>
-            <span className="text-slate-900 font-bold">HUMAN-IN-THE-LOOP AUDITED</span>
+            <span className="text-slate-900 font-bold">{t('footer.audited', 'HUMAN-IN-THE-LOOP AUDITED')}</span>
           </div>
         </div>
       </footer>

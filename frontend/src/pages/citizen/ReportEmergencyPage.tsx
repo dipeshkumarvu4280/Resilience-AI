@@ -4,6 +4,8 @@ import { TacticalBackground } from '../../components/layout/TacticalBackground';
 import { EmergencyEmblem } from '../../components/common/EmergencyEmblem';
 import { LiveCameraCapture } from '../../components/citizen/LiveCameraCapture';
 import { ErrorBoundary } from '../../components/common/ErrorBoundary';
+import { LanguageSelector } from '../../components/common/LanguageSelector';
+import { useLanguage } from '../../context/LanguageContext';
 import { loadGoogleMaps, hasGoogleMapsApiKey } from '../../utils/googleMapsLoader';
 import {
   Flame,
@@ -67,6 +69,7 @@ const MAP_LIGHT_STYLES: google.maps.MapTypeStyle[] = [
 export const ReportEmergencyPage: React.FC = () => {
   console.log('[REPORT-EMERGENCY] route mounted');
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
   const [searchParams] = useSearchParams();
   const viewReportId = searchParams.get('id');
 
@@ -656,6 +659,7 @@ export const ReportEmergencyPage: React.FC = () => {
         emergency_type: emergencyType,
         citizen_impact_level: citizenImpactLevel,
         description: description.trim(),
+        preferred_language: language,
         location: {
           latitude: latNum,
           longitude: lonNum,
@@ -780,13 +784,16 @@ export const ReportEmergencyPage: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={() => navigate('/')}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white/80 hover:bg-slate-100 text-xs font-mono font-semibold text-slate-700 transition-all shadow-xs min-h-[36px] cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Exit to Home</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <LanguageSelector variant="compact" />
+          <button
+            onClick={() => navigate('/')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white/80 hover:bg-slate-100 text-xs font-mono font-semibold text-slate-700 transition-all shadow-xs min-h-[36px] cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Exit to Home</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area Protected by ErrorBoundary */}
@@ -1055,7 +1062,7 @@ export const ReportEmergencyPage: React.FC = () => {
                 </div>
                 <div className="pt-1">
                   <button
-                    onClick={() => navigate(`/safety-guidance/${submittedReport.safety_guidance_token}`)}
+                    onClick={() => navigate(`/safety-guidance/${submittedReport.safety_guidance_token}?lang=${encodeURIComponent(language || 'en')}`)}
                     className="w-full py-3 px-4 rounded-xl bg-white hover:bg-red-50 text-red-700 font-sans font-black text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
                   >
                     <span>VIEW LIVE SAFETY GUIDANCE & ROUTE</span>
@@ -1339,15 +1346,21 @@ export const ReportEmergencyPage: React.FC = () => {
 
               {/* 3. Emergency Description */}
               <div>
-                <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 mb-1.5 font-bold">
-                  3. Describe the Situation *
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
+                  <label className="block text-xs font-mono uppercase tracking-wider text-slate-800 font-bold">
+                    3. {t('report.description', 'Describe the Situation')} *
+                  </label>
+                  <span className="text-[10px] text-indigo-700 font-medium bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <span>🌐</span>
+                    <span>{t('report.languageHint', 'Type in any Indian language. AI auto-detects & responds in same language.')}</span>
+                  </span>
+                </div>
                 <textarea
                   rows={4}
                   required
                   value={description}
                   onChange={handleDescriptionChange}
-                  placeholder="What happened? How many people are affected? Is anyone trapped or injured? Include specific landmarks, street intersections, or visible hazards."
+                  placeholder={t('report.descriptionPlaceholder', 'What happened? How many people are affected? Is anyone trapped or injured? (You can type in Telugu, Hindi, Tamil, English, etc.)')}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#dc2626] focus:bg-white focus:ring-2 focus:ring-red-500/10 transition-all font-sans"
                 />
               </div>

@@ -70,6 +70,14 @@ class ExtractedInfrastructureCondition(BaseModel):
     source: str = "LLM_EXTRACTION"
 
 
+class ExtractedLanguage(BaseModel):
+    code: str = Field(default="en", description="ISO 639-1 language code (e.g. te, hi, en, ta, kn, mr, bn, gu, ml, pa, ur, mixed)")
+    name: str = Field(default="English", description="Human-readable language name (e.g. Telugu, Hindi, English, Tamil, etc.)")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    is_mixed: bool = Field(default=False, description="True if text combines multiple languages")
+    source: str = "LLM_EXTRACTION"
+
+
 def generate_extraction_id() -> str:
     return f"EXT-{uuid.uuid4().hex[:10].upper()}"
 
@@ -89,6 +97,7 @@ class LLMExtractionResult(BaseModel):
     status: ExtractionStatus = ExtractionStatus.SUCCESS
 
     # Extracted structured dimensions
+    detected_language: Optional[ExtractedLanguage] = None
     hazard: Optional[ExtractedHazard] = None
     observations: List[ExtractedObservation] = Field(default_factory=list)
     affected_population: Optional[ExtractedAffectedPopulation] = None

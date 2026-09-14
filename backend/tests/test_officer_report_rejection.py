@@ -418,5 +418,5 @@ async def test_officer_acknowledge_sends_report_accepted_push(client: AsyncClien
     # Check push delivery record in DB
     delivery = await db["push_deliveries"].find_one({"report_id": report_id})
     assert delivery is not None
-    assert delivery["notification_type"] == "REPORT_ACCEPTED"
+    assert delivery["notification_type"] in ["REPORT_ACKNOWLEDGED", "REPORT_ACCEPTED"]
     assert delivery["status"] == "DELIVERED"

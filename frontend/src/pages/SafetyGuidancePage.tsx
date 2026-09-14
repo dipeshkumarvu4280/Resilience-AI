@@ -34,6 +34,8 @@ import {
   isWebPushSupported,
 } from '../utils/webPush';
 import { loadGoogleMaps } from '../utils/googleMapsLoader';
+import { LanguageSelector } from '../components/common/LanguageSelector';
+import { useLanguage } from '../context/LanguageContext';
 
 declare global {
   interface Window {
@@ -45,6 +47,7 @@ export const SafetyGuidancePage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
   const [searchParams] = useSearchParams();
   const effectiveToken = token || searchParams.get('token');
+  const { language } = useLanguage();
   const [guidance, setGuidance] = useState<CitizenSafetyGuidance | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<VerifiedDestination | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -78,8 +81,9 @@ export const SafetyGuidancePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const urlLang = searchParams.get('lang');
     if (effectiveToken) {
-      fetchGuidance(effectiveToken);
+      fetchGuidance(effectiveToken, urlLang || language);
     } else {
       setError('Please open your personalized safety guidance link from your emergency report or notification.');
       setLoading(false);
@@ -89,13 +93,14 @@ export const SafetyGuidancePage: React.FC = () => {
       setPushState(s);
     };
     checkState();
-  }, [effectiveToken]);
+  }, [effectiveToken, language, searchParams]);
 
-  const fetchGuidance = async (authToken: string) => {
+  const fetchGuidance = async (authToken: string, targetLang?: string) => {
     try {
       setLoading(true);
       setError(null);
-      const res = await getSafetyGuidanceByToken(authToken);
+      const langToUse = targetLang || searchParams.get('lang') || language;
+      const res = await getSafetyGuidanceByToken(authToken, langToUse);
       if (res.success && res.guidance) {
         setGuidance(res.guidance);
         setSelectedAlternative(null);
@@ -469,6 +474,8 @@ export const SafetyGuidancePage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <LanguageSelector variant="compact" />
+
             <Link
               to={`/citizen/report?id=${guidance.report_id}`}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs font-semibold text-slate-700 transition-all shadow-xs min-h-[36px]"
@@ -561,7 +568,7 @@ export const SafetyGuidancePage: React.FC = () => {
               <AlertCircle className="w-6 h-6 text-red-600" />
             </div>
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className="text-lg font-bold text-slate-900 tracking-tight">{guidance.emergency_type} Advisory</span>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getRiskBadgeColor(guidance.risk_level)}`}>
                   {guidance.risk_level} RISK
@@ -569,6 +576,12 @@ export const SafetyGuidancePage: React.FC = () => {
                 <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-300">
                   v{guidance.version}
                 </span>
+                {guidance.language && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    <span>🌐</span>
+                    <span>{guidance.language.name || guidance.language.code}</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />

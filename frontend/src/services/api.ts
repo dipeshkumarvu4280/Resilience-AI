@@ -857,16 +857,20 @@ export const triggerTestWebPush = async (
 };
 
 export const getSafetyGuidanceByToken = async (
-  token: string
+  token: string,
+  lang?: string
 ): Promise<CitizenSafetyGuidanceResponse> => {
-  const response = await api.get<CitizenSafetyGuidanceResponse>(`/citizen/safety-guidance/${token}`);
+  const params = lang ? { lang } : {};
+  const response = await api.get<CitizenSafetyGuidanceResponse>(`/citizen/safety-guidance/${token}`, { params });
   return response.data;
 };
 
 export const getSafetyGuidanceForReport = async (
-  reportId: string
+  reportId: string,
+  lang?: string
 ): Promise<CitizenSafetyGuidanceResponse> => {
-  const response = await api.get<CitizenSafetyGuidanceResponse>(`/citizen/reports/${reportId}/safety-guidance`);
+  const params = lang ? { lang } : {};
+  const response = await api.get<CitizenSafetyGuidanceResponse>(`/citizen/reports/${reportId}/safety-guidance`, { params });
   return response.data;
 };
 

@@ -326,9 +326,78 @@ class WebPushService:
         notification_type: SafetyNotificationType = SafetyNotificationType.SAFETY_GUIDANCE_UPDATED,
     ) -> PushNotificationPayload:
         """
-        Generates controlled, non-hallucinated push notification content based on verified event type.
-        Zero fake road names, zero unverified distance strings.
+        Generates controlled, non-hallucinated push notification content based on verified event type
+        and the citizen's detected or preferred language.
         """
+        lang_dict = getattr(guidance, "language", None) or {}
+        lang_code = (lang_dict.get("code") if isinstance(lang_dict, dict) else "en") or "en"
+        lang_code = lang_code.lower()
+
+        templates = {
+            "te": {
+                "ready_title": "🚨 అత్యవసర భద్రతా మార్గదర్శకం ({emergency_type})",
+                "ready_body": "ధృవీకరించబడిన సురక్షిత గమ్యస్థానం సిఫార్సు చేయబడింది.{dest_details} ప్రత్యక్ష మార్గాన్ని చూడటానికి నొక్కండి.",
+                "route_updated_title": "⚠️ భద్రతా మార్గం నవీకరించబడింది",
+                "route_updated_body": "ప్రస్తుత పరిస్థితుల దృష్ట్యా ప్రయాణ మార్గం నవీకరించబడింది.{dest_details} తాజా మార్గాన్ని చూడటానికి నొక్కండి.",
+                "dest_updated_title": "📍 గమ్యస్థానం నవీకరించబడింది",
+                "dest_updated_body": "సదుపాయాల లభ్యత ఆధారంగా పునరావాస కేంద్రం నవీకరించబడింది.{dest_details} వీక్షించడానికి నొక్కండి.",
+                "route_unsafe_title": "⛔ మార్గం తాత్కాలికంగా సురక్షితం కాదు",
+                "route_unsafe_body": "ప్రమాదకర పరిస్థితుల కారణంగా ప్రయాణ మార్గాలు మూసివేయబడ్డాయి. సురక్షిత ప్రదేశంలోనే ఆశ్రయం పొందండి.",
+                "hazard_title": "⚠️ సమీప ప్రమాద హెచ్చరిక",
+                "hazard_body": "మీ సమీపంలో ప్రమాదకర పరిస్థితి గుర్తించబడింది. జాగ్రత్తలను సమీక్షించండి.",
+                "evac_approved_title": "🛡️ తరలింపు మార్గదర్శకం ఆమోదించబడింది",
+                "evac_approved_body": "కమాండ్ సెంటర్ మీ తరలింపు మార్గాన్ని ఆమోదించింది.{dest_details} మార్గాన్ని చూడటానికి నొక్కండి.",
+                "expired_title": "⏱️ భద్రతా మార్గదర్శకం గడువు ముగిసింది",
+                "expired_body": "మునుపటి మార్గదర్శక గడువు ముగిసింది. తాజా సమాచారం కోసం నొక్కండి.",
+                "default_title": "🚨 అత్యవసర సమాచార నవీకరణ ({emergency_type})",
+                "default_body": "మీ నివేదికకు సంబంధించిన సమాచారం నవీకరించబడింది.{dest_details} వీక్షించడానికి నొక్కండి.",
+                "rec_prefix": " సిఫార్సు: {name} ({dist} · {eta}).",
+                "rec_prefix_simple": " సిఫార్సు: {name}.",
+            },
+            "hi": {
+                "ready_title": "🚨 आपातकालीन सुरक्षा मार्गदर्शन ({emergency_type})",
+                "ready_body": "एक सत्यापित सुरक्षा गंतव्य अनुशंसित किया गया है।{dest_details} लाइव मार्ग देखने के लिए टैप करें।",
+                "route_updated_title": "⚠️ सुरक्षा मार्ग अपडेट किया गया",
+                "route_updated_body": "सक्रिय परिस्थितियों के कारण पारगमन गलियारा अपडेट किया गया।{dest_details} नवीनतम मार्ग देखें।",
+                "dest_updated_title": "📍 गंतव्य अपडेट किया गया",
+                "dest_updated_body": "उपलब्धता के आधार पर आपातकालीन सुविधा अपडेट की गई।{dest_details} देखने के लिए टैप करें।",
+                "route_unsafe_title": "⛔ मार्ग अस्थायी रूप से असुरक्षित",
+                "route_unsafe_body": "सक्रिय खतरों के कारण मार्ग अवरुद्ध हैं। सुरक्षित स्थान पर आश्रय लें।",
+                "hazard_title": "⚠️ निकटवर्ती खतरा चेतावनी",
+                "hazard_body": "आपके निकट एक सक्रिय खतरा देखा गया है। सुरक्षा सावधानियों की समीक्षा करें।",
+                "evac_approved_title": "🛡️ निकासी मार्गदर्शन स्वीकृत",
+                "evac_approved_body": "कमांड ने आपके निकासी मार्ग को मंजूरी दे दी है।{dest_details} देखने के लिए टैप करें।",
+                "expired_title": "⏱️ सुरक्षा मार्गदर्शन समाप्त",
+                "expired_body": "पिछला मार्गदर्शन समाप्त हो गया है। वास्तविक समय की स्थिति के लिए टैप करें।",
+                "default_title": "🚨 आपातकालीन सुरक्षा अपडेट ({emergency_type})",
+                "default_body": "आपकी रिपोर्ट के लिए सुरक्षा जानकारी अपडेट की गई।{dest_details} देखने के लिए टैप करें।",
+                "rec_prefix": " अनुशंसित: {name} ({dist} · {eta}).",
+                "rec_prefix_simple": " अनुशंसित: {name}.",
+            },
+            "ta": {
+                "ready_title": "🚨 அவசர பாதுகாப்பு வழிகாட்டுதல் ({emergency_type})",
+                "ready_body": "சரிபார்க்கப்பட்ட பாதுகாப்பு மையம் பரிந்துரைக்கப்பட்டுள்ளது.{dest_details} வழியைக் காண தட்டவும்.",
+                "route_updated_title": "⚠️ பாதுகாப்பு பாதை மாற்றப்பட்டது",
+                "route_updated_body": "தற்போதைய நிலைமை காரணமாக பாதை புதுப்பிக்கப்பட்டுள்ளது.{dest_details} சமீபத்திய வழியைக் காணவும்.",
+                "dest_updated_title": "📍 மையம் மாற்றப்பட்டது",
+                "dest_updated_body": "கிடைக்கும் வசதிகளின் அடிப்படையில் மையம் மாற்றப்பட்டுள்ளது.{dest_details} பார்க்க தட்டவும்.",
+                "route_unsafe_title": "⛔ பாதை தற்காலிகமாக பாதுகாப்பற்றது",
+                "route_unsafe_body": "ஆபத்தான சூழலால் பாதை மூடப்பட்டுள்ளது. உள்ளேயே பாதுகாப்பாக இருங்கள்.",
+                "hazard_title": "⚠️ அருகிலுள்ள ஆபத்து எச்சரிக்கை",
+                "hazard_body": "உங்கள் பகுதியில் ஆபத்து கண்டறியப்பட்டுள்ளது. முன்னெச்சரிக்கைகளைப் பார்க்கவும்.",
+                "evac_approved_title": "🛡️ வெளியேற்ற வழிகாட்டுதல் அங்கீகரிக்கப்பட்டது",
+                "evac_approved_body": "அவசர கட்டுப்பாட்டு மையம் பாதையை அங்கீகரித்துள்ளது.{dest_details} பார்க்க தட்டவும்.",
+                "expired_title": "⏱️ வழிகாட்டுதல் காலாவதியானது",
+                "expired_body": "வழிகாட்டுதல் காலாவதியானது. நேரலை தகவலுக்கு தட்டவும்.",
+                "default_title": "🚨 அவசர பாதுகாப்பு புதுப்பிப்பு ({emergency_type})",
+                "default_body": "உங்கள் புகாருக்கான தகவல் புதுப்பிக்கப்பட்டுள்ளது.{dest_details} பார்க்க தட்டவும்.",
+                "rec_prefix": " பரிந்துரை: {name} ({dist} · {eta}).",
+                "rec_prefix_simple": " பரிந்துரை: {name}.",
+            },
+        }
+
+        t_dict = templates.get(lang_code, {})
+
         dest_details = ""
         if guidance.recommended_destination:
             dest = guidance.recommended_destination
@@ -336,34 +405,38 @@ class WebPushService:
             dist_km = f"{dest.distance_km} km" if dest.distance_km is not None else ""
             eta = f"~{int(dest.estimated_drive_minutes)} min" if dest.estimated_drive_minutes else ""
             if dist_km and eta:
-                dest_details = f" Recommended: {dest_name} ({dist_km} · {eta})."
+                rec_fmt = t_dict.get("rec_prefix", " Recommended: {name} ({dist} · {eta}).")
+                dest_details = rec_fmt.format(name=dest_name, dist=dist_km, eta=eta)
             else:
-                dest_details = f" Recommended: {dest_name}."
+                rec_fmt = t_dict.get("rec_prefix_simple", " Recommended: {name}.")
+                dest_details = rec_fmt.format(name=dest_name)
+
+        em_type = guidance.emergency_type or "General"
 
         if notification_type == SafetyNotificationType.SAFETY_GUIDANCE_READY:
-            title = f"🚨 Emergency Safety Guidance ({guidance.emergency_type})"
-            body = f"A verified safety destination has been recommended.{dest_details} Tap to view live route."
+            title = t_dict.get("ready_title", "🚨 Emergency Safety Guidance ({emergency_type})").format(emergency_type=em_type)
+            body = t_dict.get("ready_body", "A verified safety destination has been recommended.{dest_details} Tap to view live route.").format(dest_details=dest_details)
         elif notification_type == SafetyNotificationType.ROUTE_UPDATED:
-            title = "⚠️ Safety Route Updated"
-            body = f"Transit corridor updated due to active conditions.{dest_details} Tap to view latest route."
+            title = t_dict.get("route_updated_title", "⚠️ Safety Route Updated")
+            body = t_dict.get("route_updated_body", "Transit corridor updated due to active conditions.{dest_details} Tap to view latest route.").format(dest_details=dest_details)
         elif notification_type == SafetyNotificationType.DESTINATION_UPDATED:
-            title = "📍 Destination Updated"
-            body = f"Emergency response facility updated based on operational availability.{dest_details} Tap to view."
+            title = t_dict.get("dest_updated_title", "📍 Destination Updated")
+            body = t_dict.get("dest_updated_body", "Emergency response facility updated based on operational availability.{dest_details} Tap to view.").format(dest_details=dest_details)
         elif notification_type == SafetyNotificationType.ROUTE_UNAVAILABLE:
-            title = "⛔ Route Temporarily Unsafe"
-            body = "Active hazard conditions make transit corridors impassable. Tap to view shelter-in-place instructions."
+            title = t_dict.get("route_unsafe_title", "⛔ Route Temporarily Unsafe")
+            body = t_dict.get("route_unsafe_body", "Active hazard conditions make transit corridors impassable. Tap to view shelter-in-place instructions.")
         elif notification_type == SafetyNotificationType.HAZARD_WARNING:
-            title = "⚠️ Active Hazard Proximity Alert"
-            body = "An evolving hazard has been detected near your vicinity. Tap to review vital safety precautions."
+            title = t_dict.get("hazard_title", "⚠️ Active Hazard Proximity Alert")
+            body = t_dict.get("hazard_body", "An evolving hazard has been detected near your vicinity. Tap to review vital safety precautions.")
         elif notification_type == SafetyNotificationType.EVACUATION_GUIDANCE_APPROVED:
-            title = "🛡️ Evacuation Guidance Approved"
-            body = f"Emergency operations command has approved your evacuation route.{dest_details} Tap to view corridor."
+            title = t_dict.get("evac_approved_title", "🛡️ Evacuation Guidance Approved")
+            body = t_dict.get("evac_approved_body", "Emergency operations command has approved your evacuation route.{dest_details} Tap to view corridor.").format(dest_details=dest_details)
         elif notification_type == SafetyNotificationType.GUIDANCE_EXPIRED:
-            title = "⏱️ Safety Guidance Expired"
-            body = "Your previous guidance has expired. Tap to recalculate with real-time operational context."
+            title = t_dict.get("expired_title", "⏱️ Safety Guidance Expired")
+            body = t_dict.get("expired_body", "Your previous guidance has expired. Tap to recalculate with real-time operational context.")
         else:  # SAFETY_GUIDANCE_UPDATED
-            title = f"🚨 Emergency Safety Update ({guidance.emergency_type})"
-            body = f"Live safety information updated for your report.{dest_details} Tap to view verified guidance."
+            title = t_dict.get("default_title", "🚨 Emergency Safety Update ({emergency_type})").format(emergency_type=em_type)
+            body = t_dict.get("default_body", "Live safety information updated for your report.{dest_details} Tap to view verified guidance.").format(dest_details=dest_details)
 
         return PushNotificationPayload(
             title=title,
@@ -378,6 +451,7 @@ class WebPushService:
                 "token": guidance.secure_access_token,
                 "version": guidance.version,
                 "notification_type": notification_type.value,
+                "language": lang_code,
             },
         )
 
@@ -437,6 +511,59 @@ class WebPushService:
 
         return sent_count
 
+    STATUS_NOTIFICATION_TEMPLATES = {
+        "en": {
+            "REPORT_ACKNOWLEDGED_TITLE": "Emergency Report Update",
+            "REPORT_ACKNOWLEDGED_BODY": "Your emergency report {report_id} has been acknowledged and is now under review.",
+            "REPORT_ACCEPTED_TITLE": "Emergency Report Accepted",
+            "REPORT_ACCEPTED_BODY": "Your emergency report {report_id} has been accepted and assigned for response coordination.",
+            "REPORT_APPROVED_TITLE": "Emergency Report Accepted",
+            "REPORT_APPROVED_BODY": "Your emergency report {report_id} has been accepted and assigned for response coordination.",
+            "REPORT_REJECTED_TITLE": "Emergency Report Update",
+            "REPORT_REJECTED_BODY": "Your emergency report {report_id} has been reviewed and rejected.\n\nReason: {reason}",
+        },
+        "hi": {
+            "REPORT_ACKNOWLEDGED_TITLE": "आपातकालीन रिपोर्ट अपडेट",
+            "REPORT_ACKNOWLEDGED_BODY": "आपकी आपातकालीन रिपोर्ट {report_id} स्वीकार कर ली गई है और अब समीक्षाधीन है।",
+            "REPORT_ACCEPTED_TITLE": "आपातकालीन रिपोर्ट स्वीकृत",
+            "REPORT_ACCEPTED_BODY": "आपकी आपातकालीन रिपोर्ट {report_id} स्वीकृत कर ली गई है और प्रतिक्रिया समन्वय के लिए सौंपी गई है।",
+            "REPORT_APPROVED_TITLE": "आपातकालीन रिपोर्ट स्वीकृत",
+            "REPORT_APPROVED_BODY": "आपकी आपातकालीन रिपोर्ट {report_id} स्वीकृत कर ली गई है और प्रतिक्रिया समन्वय के लिए सौंपी गई है।",
+            "REPORT_REJECTED_TITLE": "आपातकालीन रिपोर्ट अपडेट",
+            "REPORT_REJECTED_BODY": "आपकी आपातकालीन रिपोर्ट {report_id} की समीक्षा की गई और अस्वीकार कर दिया गया।\n\nकारण: {reason}",
+        },
+        "te": {
+            "REPORT_ACKNOWLEDGED_TITLE": "అత్యవసర నివేదిక నవీకరణ",
+            "REPORT_ACKNOWLEDGED_BODY": "మీ అత్యవసర నివేదిక {report_id} గుర్తించబడింది మరియు ప్రస్తుతం పరిశీలనలో ఉంది.",
+            "REPORT_ACCEPTED_TITLE": "అత్యవసర నివేదిక ఆమోదించబడింది",
+            "REPORT_ACCEPTED_BODY": "మీ అత్యవసర నివేదిక {report_id} ఆమోదించబడింది మరియు ప్రతిస్పందన సమన్వయానికి కేటాయించబడింది.",
+            "REPORT_APPROVED_TITLE": "అత్యవసర నివేదిక ఆమోదించబడింది",
+            "REPORT_APPROVED_BODY": "మీ అత్యవసర నివేదిక {report_id} ఆమోదించబడింది మరియు ప్రతిస్పందన సమన్వయానికి కేటాయించబడింది.",
+            "REPORT_REJECTED_TITLE": "అత్యవసర నివేదిక నవీకరణ",
+            "REPORT_REJECTED_BODY": "మీ అత్యవసర నివేదిక {report_id} సమీక్షించబడింది మరియు తిరస్కరించబడింది.\n\nకారణం: {reason}",
+        },
+        "ta": {
+            "REPORT_ACKNOWLEDGED_TITLE": "அவசர அறிக்கை புதுப்பிப்பு",
+            "REPORT_ACKNOWLEDGED_BODY": "உங்கள் அவசர அறிக்கை {report_id} ஏற்றுக்கொள்ளப்பட்டு தற்போது பரிசீலனையில் உள்ளது.",
+            "REPORT_ACCEPTED_TITLE": "அவசர அறிக்கை அங்கீகரிக்கப்பட்டது",
+            "REPORT_ACCEPTED_BODY": "உங்கள் அவசர அறிக்கை {report_id} அங்கீகரிக்கப்பட்டு நடவடிக்கைக்கு ஒதுக்கப்பட்டுள்ளது.",
+            "REPORT_APPROVED_TITLE": "அவசர அறிக்கை அங்கீகரிக்கப்பட்டது",
+            "REPORT_APPROVED_BODY": "உங்கள் அவசர அறிக்கை {report_id} அங்கீகரிக்கப்பட்டு நடவடிக்கைக்கு ஒதுக்கப்பட்டுள்ளது.",
+            "REPORT_REJECTED_TITLE": "அவசர அறிக்கை புதுப்பிப்பு",
+            "REPORT_REJECTED_BODY": "உங்கள் அவசர அறிக்கை {report_id} மதிப்பாய்வு செய்யப்பட்டு நிராகரிக்கப்பட்டது.\n\nகாரணம்: {reason}",
+        },
+        "kn": {
+            "REPORT_ACKNOWLEDGED_TITLE": "ತುರ್ತು ವರದಿ ನವೀಕರಣ",
+            "REPORT_ACKNOWLEDGED_BODY": "ನಿಮ್ಮ ತುರ್ತು ವರದಿ {report_id} ಅನ್ನು ಸ್ವೀಕರಿಸಲಾಗಿದೆ ಮತ್ತು ಪ್ರಸ್ತುತ ಪರಿಶೀಲನೆಯಲ್ಲಿದೆ.",
+            "REPORT_ACCEPTED_TITLE": "ತುರ್ತು ವರದಿ ಅನುಮೋದಿಸಲಾಗಿದೆ",
+            "REPORT_ACCEPTED_BODY": "ನಿಮ್ಮ ತುರ್ತು ವರದಿ {report_id} ಅನ್ನು ಅನುಮೋದಿಸಲಾಗಿದೆ ಮತ್ತು ನಿಯೋಜಿಸಲಾಗಿದೆ.",
+            "REPORT_APPROVED_TITLE": "ತುರ್ತು ವರದಿ ಅನುಮೋದಿಸಲಾಗಿದೆ",
+            "REPORT_APPROVED_BODY": "ನಿಮ್ಮ ತುರ್ತು ವರದಿ {report_id} ಅನ್ನು ಅನುಮೋದಿಸಲಾಗಿದೆ ಮತ್ತು ನಿಯೋಜಿಸಲಾಗಿದೆ.",
+            "REPORT_REJECTED_TITLE": "ತುರ್ತು ವರದಿ ನವೀಕರಣ",
+            "REPORT_REJECTED_BODY": "ನಿಮ್ಮ ತುರ್ತು ವರದಿ {report_id} ಅನ್ನು ಪರಿಶೀಲಿಸಲಾಗಿದೆ ಮತ್ತು ತಿರಸ್ಕರಿಸಲಾಗಿದೆ.\n\nಕಾರಣ: {reason}",
+        },
+    }
+
     @classmethod
     async def notify_citizen_report_status_update(
         cls,
@@ -451,6 +578,7 @@ class WebPushService:
         """
         Notifies active browser subscriptions specifically linked to a citizen report_id.
         Accurately differentiates NO_SUBSCRIPTION, DELIVERED, FAILED, and EXPIRED.
+        Uses stored citizen language for multilingual localization.
         Never throws unhandled exceptions that could roll back upstream database mutations.
         """
         if db is None:
@@ -484,9 +612,10 @@ class WebPushService:
                 "details": f"No active browser push subscription linked to report '{clean_id}'."
             }
 
-        # Check if report has safety guidance token for url
+        # Check report document for stored citizen language and safety guidance token
         report_doc = await db["citizen_reports"].find_one({"report_id": clean_id})
         url = "/"
+        lang_code = "en"
         if report_doc:
             if report_doc.get("safety_guidance_token"):
                 url = f"/safety-guidance/{report_doc['safety_guidance_token']}"
@@ -495,17 +624,36 @@ class WebPushService:
                 if guidance_doc and guidance_doc.get("secure_access_token"):
                     url = f"/safety-guidance/{guidance_doc['secure_access_token']}"
 
-        resolved_event_id = event_id or f"EVT-PUSH-{clean_id}-{notification_type.value}"
+            lang_field = report_doc.get("language")
+            if isinstance(lang_field, dict) and lang_field.get("code"):
+                lang_code = str(lang_field["code"]).strip().lower()
+            elif report_doc.get("preferred_language"):
+                lang_code = str(report_doc["preferred_language"]).strip().lower()
+
+        # Localize title and body based on the report's stored citizen language
+        resolved_title = title
+        resolved_body = body
+        notif_key = notification_type.value if hasattr(notification_type, "value") else str(notification_type)
+        tpl_map = cls.STATUS_NOTIFICATION_TEMPLATES.get(lang_code) or cls.STATUS_NOTIFICATION_TEMPLATES.get("en", {})
+
+        reason_val = (data or {}).get("rejection_reason") or (data or {}).get("reason") or (report_doc or {}).get("rejection_reason", "")
+        if f"{notif_key}_TITLE" in tpl_map:
+            resolved_title = tpl_map[f"{notif_key}_TITLE"]
+        if f"{notif_key}_BODY" in tpl_map:
+            resolved_body = tpl_map[f"{notif_key}_BODY"].format(report_id=clean_id, reason=reason_val)
+
+        resolved_event_id = event_id or f"EVT-PUSH-{clean_id}-{notif_key}"
 
         payload_data = {
             "report_id": clean_id,
-            "notification_type": notification_type.value,
+            "notification_type": notif_key,
+            "language": lang_code,
             **(data or {})
         }
 
         payload = PushNotificationPayload(
-            title=title,
-            body=body,
+            title=resolved_title,
+            body=resolved_body,
             icon="/favicon.svg",
             badge="/favicon.svg",
             url=url,

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 from app.models.enums import (
@@ -146,6 +146,7 @@ class EmergencyReportCreate(BaseModel):
     )
     description: str = Field(..., min_length=10, max_length=3000)
     location: LocationPayload
+    preferred_language: Optional[str] = Field(None, description="Citizen preferred or selected UI language code (e.g. te, hi, en, ta)")
     verification_token: Optional[str] = None
     bot_honeypot: Optional[str] = None
     media: Optional[List[MediaAttachment]] = Field(default_factory=list)
@@ -165,6 +166,8 @@ class EmergencyReportResponse(BaseModel):
     emergency_type: EmergencyType
     citizen_impact_level: CitizenImpactLevel = CitizenImpactLevel.NOT_SURE
     description: str
+    original_description: Optional[str] = None
+    language: Optional[Dict[str, Any]] = None
     location: LocationPayload
     media: List[MediaAttachment] = Field(default_factory=list)
     evidence: Optional[LiveEvidenceRecord] = None

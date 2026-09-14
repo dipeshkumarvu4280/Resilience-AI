@@ -28,6 +28,493 @@ from app.services.notification.web_push_service import WebPushService
 logger = logging.getLogger("resilience.agents.safety_guidance")
 
 
+MULTILINGUAL_SAFETY_TEMPLATES = {
+    "en": {
+        "flood": {
+            "actions": [
+                "Move to highest accessible floor or elevated ground immediately.",
+                "Avoid walking, wading, or driving through moving floodwaters.",
+            ],
+            "precautions": [
+                "Turn off main electrical breaker and gas valve if safely accessible.",
+                "Keep emergency kit, medications, and fully charged phone sealed in waterproof bag.",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "Evacuate building immediately via nearest safe ground exit; stay low under smoke.",
+                "Close doors behind you to slow flame progression.",
+            ],
+            "precautions": [
+                "Never use elevators during a structural fire emergency.",
+                "Cover mouth and nose with a damp cloth if smoke is present.",
+            ],
+        },
+        "landslide": {
+            "actions": [
+                "Move away from steep slopes, retaining walls, and compromised foundations.",
+                "Listen for unusual cracking sounds, tumbling rocks, or sudden water surges.",
+            ],
+            "precautions": [
+                "Avoid river valleys and low-lying drainage channels during active slope movement.",
+            ],
+        },
+        "medical": {
+            "actions": [
+                "Keep patient still, calm, and warm; do not move injured persons unless immediate hazard threatens.",
+                "Apply direct clean pressure to severe bleeding wounds.",
+            ],
+            "precautions": [
+                "Clear access path for arriving emergency medical responders.",
+            ],
+        },
+        "general": {
+            "actions": [
+                "Remain in a safe, sheltered location and await direct responder coordination.",
+            ],
+            "precautions": [
+                "Keep communication lines clear for emergency responder updates.",
+            ],
+        },
+        "dest_prefix": "Follow verified route towards {dest} ({dist:.1f} km).",
+        "no_dest": "No safe evacuation destination is currently confirmed. Remain sheltered in place.",
+        "route_advisory": "Route Advisory: {warning}",
+    },
+    "te": {
+        "flood": {
+            "actions": [
+                "వెంటనే అత్యంత ఎత్తైన అంతస్తు లేదా ఎత్తైన ప్రదేశానికి చేరుకోండి.",
+                "ప్రవహించే వరద నీటిలో నడవద్దు లేదా వాహనాలు నడపవద్దు.",
+            ],
+            "precautions": [
+                "సురక్షితంగా వీలైతే ప్రధాన విద్యుత్ బ్రేకరు మరియు గ్యాస్ వాల్వ్ ఆపివేయండి.",
+                "ఎమర్జెన్సీ కిట్, మందులు మరియు ఛార్జ్ చేసిన ఫోన్‌ను వాటర్‌ప్రూఫ్ బ్యాగ్‌లో ఉంచండి.",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "సమీపంలోని సురక్షిత మార్గం ద్వారా వెంటనే భవనాన్ని ఖాళీ చేయండి; పొగ కిందకి వంగి ఉండండి.",
+                "మంటల వ్యాప్తిని తగ్గించడానికి మీ వెనుక తలుపులు మూసివేయండి.",
+            ],
+            "precautions": [
+                "అగ్ని ప్రమాద సమయాల్లో ఎలివేటర్లను ఎప్పుడూ ఉపయోగించవద్దు.",
+                "పొగ ఉంటే తడి గుడ్డతో ముక్కు మరియు నోటిని కప్పుకోండి.",
+            ],
+        },
+        "landslide": {
+            "actions": [
+                "ఏటవాలు కొండలు, గోడలు మరియు బలహీనమైన పునాదుల నుండి దూరంగా వెళ్లండి.",
+                "అసాధారణ శబ్దాలు, రాళ్ళు పడటం లేదా నీటి ప్రవాహాలను గమనించండి.",
+            ],
+            "precautions": [
+                "వర్షాలు లేదా నేల కదలికల సమయంలో లోయలు మరియు పల్లపు కాలువల వద్ద ఉండకండి.",
+            ],
+        },
+        "medical": {
+            "actions": [
+                "రోగిని ప్రశాంతంగా, వెచ్చగా ఉంచండి; అత్యవసర ప్రమాదం ఉంటే తప్ప క్షతగాత్రులను కదల్చవద్దు.",
+                "తీవ్ర రక్తస్రావం జరుగుతున్న గాయాలపై శుభ్రమైన గుడ్డతో ఒత్తిడి ఉంచండి.",
+            ],
+            "precautions": [
+                "అత్యవసర వైద్య సిబ్బంది రాక కోసం మార్గాన్ని స్పష్టంగా ఉంచండి.",
+            ],
+        },
+        "general": {
+            "actions": [
+                "సురక్షితమైన ప్రదేశంలో ఉండి అత్యవసర ప్రతిస్పందన బృందం సూచనల కోసం వేచి ఉండండి.",
+            ],
+            "precautions": [
+                "అత్యవసర రెస్పాండర్ అప్‌డేట్‌ల కోసం కమ్యూనికేషన్ లైన్లను సిద్ధంగా ఉంచండి.",
+            ],
+        },
+        "dest_prefix": "{dest} వైపు నిర్ధారించబడిన మార్గాన్ని అనుసరించండి ({dist:.1f} కి.మీ).",
+        "no_dest": "సురక్షిత తరలింపు కేంద్రం ఇంకా నిర్ధారించబడలేదు. సురక్షిత ప్రదేశంలోనే ఆశ్రయం పొందండి.",
+        "route_advisory": "రహదారి హెచ్చరిక: {warning}",
+    },
+    "hi": {
+        "flood": {
+            "actions": [
+                "तुरंत उच्चतम सुलभ मंजिल या ऊंचे स्थान पर जाएं।",
+                "बहते बाढ़ के पानी में चलने या गाड़ी चलाने से बचें।",
+            ],
+            "precautions": [
+                "सुरक्षित होने पर मुख्य बिजली ब्रेकर और गैस वाल्व बंद कर दें।",
+                "इमरजेंसी किट, दवाएं और चार्ज फोन वाटरप्रूफ बैग में रखें।",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "निकटतम सुरक्षित निकास से तुरंत इमारत खाली करें; धुएं में नीचे झुककर रहें।",
+                "आग के फैलाव को धीमा करने के लिए पीछे के दरवाजे बंद कर दें।",
+            ],
+            "precautions": [
+                "आग लगने पर कभी भी लिफ्ट का उपयोग न करें।",
+                "धुआं होने पर मुंह और नाक को गीले कपड़े से ढकें।",
+            ],
+        },
+        "landslide": {
+            "actions": [
+                "खड़ी ढलानों, दीवारों और कमजोर संरचनाओं से दूर रहें।",
+                "असामान्य आवाज़ों, पत्थरों के गिरने या पानी के तेज बहाव पर ध्यान दें।",
+            ],
+            "precautions": [
+                "भूस्खलन के दौरान नदी घाटियों और जल निकासी चैनलों से बचें।",
+            ],
+        },
+        "medical": {
+            "actions": [
+                "मरीज को शांत और स्थिर रखें; गंभीर खतरा न होने तक घायल व्यक्ति को न हिलाएं।",
+                "अधिक खून बहने वाले घावों पर साफ दबाव डालें।",
+            ],
+            "precautions": [
+                "आपातकालीन चिकित्सा सहायता के लिए रास्ता साफ रखें।",
+            ],
+        },
+        "general": {
+            "actions": [
+                "सुरक्षित आश्रय स्थल पर रहें और आपातकालीन दल के निर्देशों की प्रतीक्षा करें।",
+            ],
+            "precautions": [
+                "आपातकालीन अपडेट के लिए संपर्क लाइनें खुली रखें।",
+            ],
+        },
+        "dest_prefix": "{dest} की ओर सत्यापित मार्ग का पालन करें ({dist:.1f} किमी).",
+        "no_dest": "कोई सुरक्षित निकासी गंतव्य वर्तमान में पुष्टि नहीं हुआ है। सुरक्षित स्थान पर रहें।",
+        "route_advisory": "मार्ग सलाह: {warning}",
+    },
+    "ta": {
+        "flood": {
+            "actions": [
+                "உடனடியாக மிக உயர்ந்த தளத்திற்கு அல்லது உயரமான பகுதிக்கு செல்லுங்கள்.",
+                "ஓடும் வெள்ள நீரில் நடப்பதையோ அல்லது வாகனம் ஓட்டுவதையோ தவிர்க்கவும்.",
+            ],
+            "precautions": [
+                "பாதுகாப்பாக இருந்தால் பிரதான மின் மற்றும் எரிவாயு இணைப்புகளை அணைக்கவும்.",
+                "அவசர உதவி பெட்டி, மருந்துகள் மற்றும் மொபைல் போனை நீர்ப்புகா பையில் வைக்கவும்.",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "அருகிலுள்ள பாதுகாப்பான தரைவழி வெளியேற்றம் மூலம் உடனடியாக கட்டிடத்தை விட்டு வெளியேறுங்கள்; புகையின் கீழ் குனிந்து செல்லுங்கள்.",
+                "தீ பரவுவதை மெதுவாக்க கதவுகளை மூடுங்கள்.",
+            ],
+            "precautions": [
+                "தீ விபத்தின் போது ஒருபோதும் லிஃப்ட்களைப் பயன்படுத்த வேண்டாம்.",
+                "புகை இருந்தால் ஈரமான துணியால் வாய் மற்றும் மூக்கை மூடுங்கள்.",
+            ],
+        },
+        "landslide": {
+            "actions": [
+                "செங்குத்தான சரிவுகள் மற்றும் பலவீனமான சுவர்களில் இருந்து விலகி இருங்கள்.",
+            ],
+            "precautions": [
+                "சரிவுப் பகுதிகளில் வடிகால் கால்வாய்களைத் தவிர்க்கவும்.",
+            ],
+        },
+        "medical": {
+            "actions": [
+                "பாதிக்கப்பட்டவரை அமைதியாகவும் அசையாமலும் வைத்திருங்கள்; ஆபத்து இல்லாவிட்டால் காயமடைந்தவர்களை நகர்த்த வேண்டாம்.",
+                "அதிக ரத்தப்போக்கு உள்ள காயங்களுக்கு சுத்தமான அழுத்தத்தைப் பயன்படுத்துங்கள்.",
+            ],
+            "precautions": [
+                "அவசர மருத்துவ உதவி வாகனங்களுக்கு வழியை விடுங்கள்.",
+            ],
+        },
+        "general": {
+            "actions": [
+                "பாதுகாப்பான இடத்தில் இருந்து மீட்புக் குழுவின் தகவலுக்காக காத்திருங்கள்.",
+            ],
+            "precautions": [
+                "அவசர தகவல்களுக்காக தொடர்பு வழிகளை தயாராக வைத்திருங்கள்.",
+            ],
+        },
+        "dest_prefix": "{dest} நோக்கி சரிபார்க்கப்பட்ட பாதையைப் பின்பற்றவும் ({dist:.1f} கி.மீ).",
+        "no_dest": "பாதுகாப்பான வெளியேற்ற மையம் தற்போது உறுதிப்படுத்தப்படவில்லை. பாதுகாப்பான இடத்தில் இருங்கள்.",
+        "route_advisory": "பாதை எச்சரிக்கை: {warning}",
+    },
+    "kn": {
+        "flood": {
+            "actions": [
+                "ತಕ್ಷಣವೇ ಎತ್ತರದ ಮಹಡಿ ಅಥವಾ ಎತ್ತರದ ಸ್ಥಳಕ್ಕೆ ತೆರಳಿ.",
+                "ಹರಿಯುವ ಪ್ರವಾಹದ ನೀರಿನಲ್ಲಿ ನಡೆಯುವುದು ಅಥವಾ ವಾಹನ ಚಾಲನೆ ಮಾಡುವುದನ್ನು ತಪ್ಪಿಸಿ.",
+            ],
+            "precautions": [
+                "ಸುರಕ್ಷಿತವಾಗಿದ್ದರೆ ಮುಖ್ಯ ವಿದ್ಯುತ್ ಮತ್ತು ಗ್ಯಾಸ್ ಸಂಪರ್ಕವನ್ನು ಆಫ್ ಮಾಡಿ.",
+                "ತುರ್ತು ಕಿಟ್, ಔಷಧಿಗಳು ಮತ್ತು ಮೊಬೈಲ್ ಅನ್ನು ಜಲನಿರೋಧಕ ಚೀಲದಲ್ಲಿಡಿ.",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "ಹತ್ತಿರದ ಸುರಕ್ಷಿತ ನಿರ್ಗಮನದ ಮೂಲಕ ತಕ್ಷಣ ಕಟ್ಟಡವನ್ನು ಖಾಲಿ ಮಾಡಿ; ಹೊಗೆಯ ಕೆಳಗೆ ಬಗ್ಗಿರಿ.",
+                "ಬೆಂಕಿ ಹರಡುವುದನ್ನು ನಿಧಾನಗೊಳಿಸಲು ಬಾಗಿಲುಗಳನ್ನು ಮುಚ್ಚಿ.",
+            ],
+            "precautions": [
+                "ಬೆಂಕಿ ಅವಘಡದ ಸಮಯದಲ್ಲಿ ಎಂದಿಗೂ ಲಿಫ್ಟ್ ಬಳಸಬೇಡಿ.",
+                "ಹೊಗೆ ಇದ್ದರೆ ಒದ್ದೆಯಾದ ಬಟ್ಟೆಯಿಂದ ಬಾಯಿ ಮತ್ತು ಮೂಗನ್ನು ಮುಚ್ಚಿಕೊಳ್ಳಿ.",
+            ],
+        },
+        "landslide": {
+            "actions": ["ಕಡಿದಾದ ಇಳಿಜಾರುಗಳು ಮತ್ತು ದುರ್ಬಲ ಗೋಡೆಗಳಿಂದ ದೂರವಿರಿ."],
+            "precautions": ["ನದಿಯ ಕಣಿವೆಗಳು ಮತ್ತು ತಗ್ಗು ಪ್ರದೇಶಗಳಿಂದ ದೂರವಿರಿ."],
+        },
+        "medical": {
+            "actions": [
+                "ರೋಗಿಯನ್ನು ಶಾಂತವಾಗಿ ಮತ್ತು ಬೆಚ್ಚಗಿಡಿ; ತಕ್ಷಣದ ಅಪಾಯವಿಲ್ಲದಿದ್ದರೆ ಗಾಯಾಳುಗಳನ್ನು ಚಲಿಸಬೇಡಿ.",
+                "ತೀವ್ರ ರಕ್ತಸ್ರಾವವಿರುವ ಗಾಯಗಳ ಮೇಲೆ ಸ್ವಚ್ಛ ಒತ್ತಡವನ್ನು ಹಾಕಿ.",
+            ],
+            "precautions": ["ತುರ್ತು ವೈದ್ಯಕೀಯ ಸಿಬ್ಬಂದಿಗಾಗಿ ಮಾರ್ಗವನ್ನು ತೆರವುಗೊಳಿಸಿ."],
+        },
+        "general": {
+            "actions": ["ಸುರಕ್ಷಿತ ಸ್ಥಳದಲ್ಲಿ ಆಶ್ರಯ ಪಡೆದು ತುರ್ತು ರಕ್ಷಣಾ ತಂಡದ ಸೂಚನೆಗಾಗಿ ಕಾಯಿರಿ."],
+            "precautions": ["ತುರ್ತು ಮಾಹಿತಿಗಾಗಿ ಸಂಪರ್ಕ ಮಾರ್ಗಗಳನ್ನು ಸಿದ್ಧವಾಗಿಡಿ."],
+        },
+        "dest_prefix": "{dest} ಕಡೆಗೆ ಪರಿಶೀಲಿಸಿದ ಮಾರ್ಗವನ್ನು ಅನುಸರಿಸಿ ({dist:.1f} ಕಿ.ಮೀ).",
+        "no_dest": "ಸುರಕ್ಷಿತ ಸ್ಥಳಾಂತರ ಕೇಂದ್ರ ಖಚಿತವಾಗಿಲ್ಲ. ಸುರಕ್ಷಿತ ಸ್ಥಳದಲ್ಲಿಯೇ ಇರಿ.",
+        "route_advisory": "ಮಾರ್ಗ ಸಲಹೆ: {warning}",
+    },
+    "mr": {
+        "flood": {
+            "actions": [
+                "त्वरित सर्वात वरच्या मजल्यावर किंवा उंच जागी जा.",
+                "वाहत्या पुराच्या पाण्यातून चालणे किंवा वाहन चालवणे टाळा.",
+            ],
+            "precautions": [
+                "सुरक्षित असल्यास मुख्य विद्युत आणि गॅस पुरवठा बंद करा.",
+                "आपत्कालीन किट, औषधे आणि चार्ज केलेला फोन वॉटरप्रूफ बॅगमध्ये ठेवा.",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "जवळच्या सुरक्षित मार्गाने त्वरित इमारत रिकामी करा; धुरामध्ये वाकून चाला.",
+                "आगीचा प्रसार रोखण्यासाठी मागील दरवाजे बंद करा.",
+            ],
+            "precautions": [
+                "आग लागल्यास कधीही लिफ्टचा वापर करू नका.",
+                "धूर असल्यास ओल्या कपड्याने तोंड आणि नाक झाका.",
+            ],
+        },
+        "landslide": {
+            "actions": ["उंच कडे आणि कमकुवत बांधकामांपासून दूर राहा."],
+            "precautions": ["दरडी कोसळण्याच्या भागात जाणे टाळा."],
+        },
+        "medical": {
+            "actions": [
+                "रुग्णाला शांत ठेवा; थेट धोका नसल्यास जखमी व्यक्तीला हलवू नका.",
+                "रक्तस्राव थांबवण्यासाठी स्वच्छ दाबाचा वापर करा.",
+            ],
+            "precautions": ["आपत्कालीन वैद्यकीय मदतीसाठी रस्ता मोकळा ठेवा."],
+        },
+        "general": {
+            "actions": ["सुरक्षित ठिकाणी राहा आणि मदत पथकाच्या सूचनांचे पालन करा."],
+            "precautions": ["आपत्कालीन संपर्कासाठी फोन लाईन्स मोकळ्या ठेवा."],
+        },
+        "dest_prefix": "{dest} कडे जाणारा सुरक्षित मार्ग वापरा ({dist:.1f} किमी).",
+        "no_dest": "कोणतेही सुरक्षित ठिकाण निश्चित नाही. सुरक्षित जागेवर राहा.",
+        "route_advisory": "मार्ग सल्ला: {warning}",
+    },
+    "bn": {
+        "flood": {
+            "actions": [
+                "অবিলম্বে সর্বোচ্চ তলা বা উঁচু স্থানে চলে যান।",
+                "প্রবাহিত বন্যার জলে হাঁটা বা গাড়ি চালানো এড়িয়ে চলুন।",
+            ],
+            "precautions": [
+                "নিরাপদ হলে প্রধান বিদ্যুৎ এবং গ্যাস সংযোগ বন্ধ করুন।",
+                "জরুরি কিট, ওষুধ এবং চার্জযুক্ত ফোন ওয়াটারপ্রুফ ব্যাগে রাখুন।",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "নিকটতম নিরাপদ পথ দিয়ে অবিলম্বে ভবন ত্যাগ করুন; ধোঁয়ার নিচে নিচু হয়ে থাকুন।",
+                "আগুন ছড়ানো ধীর করতে পেছনের দরজা বন্ধ করুন।",
+            ],
+            "precautions": [
+                "আগুনের সময় কখনোই লিফট ব্যবহার করবেন না।",
+                "ধোঁয়া থাকলে ভেজা কাপড় দিয়ে মুখ ও নাক ঢেকে রাখুন।",
+            ],
+        },
+        "landslide": {
+            "actions": ["খাড়া ঢাল ও দুর্বল প্রাচীর থেকে দূরে থাকুন।"],
+            "precautions": ["নিচু উপত্যকা ও নর্দমা থেকে দূরে থাকুন।"],
+        },
+        "medical": {
+            "actions": [
+                "রোগীকে শান্ত ও স্থির রাখুন; সরাসরি বিপদ না থাকলে আহত ব্যক্তিকে স্থানান্তর করবেন না।",
+                "রক্তপাত বন্ধ করতে পরিষ্কার চাপ প্রয়োগ করুন।",
+            ],
+            "precautions": ["জরুরি চিকিৎসা কর্মীদের জন্য পথ পরিষ্কার রাখুন।"],
+        },
+        "general": {
+            "actions": ["নিরাপদ আশ্রয়ে থাকুন এবং উদ্ধারকারী দলের জন্য অপেক্ষা করুন।"],
+            "precautions": ["জরুরি আপডেটের জন্য যোগাযোগের মাধ্যম প্রস্তুত রাখুন।"],
+        },
+        "dest_prefix": "{dest}-এর দিকে যাচাইকৃত পথ অনুসরণ করুন ({dist:.1f} কিমি)।",
+        "no_dest": "কোনো নিরাপদ গন্তব্য নিশ্চিত হয়নি। নিরাপদ স্থানে থাকুন।",
+        "route_advisory": "পথ নির্দেশনা: {warning}",
+    },
+    "gu": {
+        "flood": {
+            "actions": [
+                "તરત જ સૌથી ઊંચા માળે અથવા ઊંચા સ્થળે પહોંચો.",
+                "વહેતા પૂરના પાણીમાં ચાલવાનું કે વાહન ચલાવવાનું ટાળો.",
+            ],
+            "precautions": [
+                "સલામત હોય તો મુખ્ય ઇલેક્ટ્રિકલ બ્રેકર અને ગેસ વાલ્વ બંધ કરો.",
+                "ઇમરજન્સી કિટ, દવાઓ અને ચાર્જ કરેલો ફોન વોટરપ્રૂફ બેગમાં રાખો.",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "નજીકના સલામત નિકાસ દ્વારા તરત જ ઇમારત ખાલી કરો; ધુમાડામાં નીચા રહો.",
+                "આગ ફેલાતી રોકવા માટે દરવાજા બંધ કરો.",
+            ],
+            "precautions": [
+                "આગ સમયે ક્યારેય લિફ્ટનો ઉપયોગ કરશો નહીં.",
+                "ધુમાડો હોય તો ભીના કપડાથી મોં અને નાક ઢાંકો.",
+            ],
+        },
+        "landslide": {
+            "actions": ["ઊંચા ઢોળાવો અને જોખમી દિવાલોથી દૂર રહો."],
+            "precautions": ["ભૂસ્ખલનવાળા વિસ્તારોથી દૂર રહો."],
+        },
+        "medical": {
+            "actions": [
+                "દર્દીને શાંત અને સ્થિર રાખો; સીધો ભય ન હોય ત્યાં સુધી ઇજાગ્રસ્તને ખસેડશો નહીં.",
+                "વધુ પડતા રક્તસ્રાવ પર સ્વચ્છ દબાણ આપો.",
+            ],
+            "precautions": ["ઇમરજન્સી મેડિકલ સહાય માટે રસ્તો ખુલ્લો રાખો."],
+        },
+        "general": {
+            "actions": ["સલામત જગ્યાએ આશ્રય લો અને રાહત દળની સૂચનાઓની રાહ જુઓ."],
+            "precautions": ["ઇમરજન્સી અપડેટ્સ માટે સંપર્ક લાઇન ખુલ્લી રાખો."],
+        },
+        "dest_prefix": "{dest} તરફ ચકાસાયેલ માર્ગને અનુસરો ({dist:.1f} કિમી).",
+        "no_dest": "કોઈ સલામત આશ્રયસ્થાન ખાતરી થયેલ નથી. સલામત જગ્યાએ રહો.",
+        "route_advisory": "માર્ગ સલાહ: {warning}",
+    },
+    "ml": {
+        "flood": {
+            "actions": [
+                "ഉടൻ തന്നെ ഏറ്റവും ഉയർന്ന നിലയിലേക്കോ ഉയർന്ന സ്ഥലത്തേക്കോ മാറുക.",
+                "ഒഴുകുന്ന വെള്ളത്തിലൂടെ നടക്കുകയോ വാഹനം ഓടിക്കുകയോ ചെയ്യരുത്.",
+            ],
+            "precautions": [
+                "സുരക്ഷിതമാണെങ്കിൽ പ്രധാന വൈദ്യുതി, ഗ്യാസ് കണക്ഷനുകൾ ഓഫ് ചെയ്യുക.",
+                "എമർജൻസി കിറ്റ്, മരുന്നുകൾ, ചാർജ് ചെയ്ത ഫോൺ എന്നിവ വാട്ടർപ്രൂഫ് ബാഗിൽ സൂക്ഷിക്കുക.",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "ഏറ്റവും അടുത്തുള്ള സുരക്ഷിത വഴിയിലൂടെ ഉടൻ കെട്ടിടത്തിൽ നിന്ന് പുറത്തുകടക്കുക.",
+                "തീ പടരുന്നത് തടയാൻ വാതിലുകൾ അടയ്ക്കുക.",
+            ],
+            "precautions": [
+                "തീപിടുത്തമുണ്ടാകുമ്പോൾ ഒരിക്കലും ലിഫ്റ്റ് ഉപയോഗിക്കരുത്.",
+                "പുകയുണ്ടെങ്കിൽ നനഞ്ഞ തുണികൊണ്ട് വായും മൂക്കും മൂടുക.",
+            ],
+        },
+        "landslide": {
+            "actions": ["കുത്തനെയുള്ള ചരിവുകളിൽ നിന്നും ഭിത്തികളിൽ നിന്നും മാറുക."],
+            "precautions": ["താഴ്ന്ന പ്രദേശങ്ങളിൽ നിന്നും ജലാശയങ്ങളിൽ നിന്നും മാറിനിൽക്കുക."],
+        },
+        "medical": {
+            "actions": [
+                "രോഗിയെ ശാന്തമായി കിടത്തുക; അടിയന്തര അപകടമില്ലെങ്കിൽ പരിക്കേറ്റവരെ മാറ്റരുത്.",
+                "രക്തസ്രാവം തടയാൻ വൃത്തിയുള്ള തുണികൊണ്ട് അമർത്തിപ്പിടിക്കുക.",
+            ],
+            "precautions": ["ആംബുലൻസിനും ജീവനക്കാർക്കും വഴി നൽകുക."],
+        },
+        "general": {
+            "actions": ["സുരക്ഷിതമായ സ്ഥാനത്ത് തുടർന്ന് രക്ഷാപ്രവർത്തകരുടെ നിർദ്ദേശങ്ങൾ പാലിക്കുക."],
+            "precautions": ["അടിയന്തര വിവരങ്ങൾക്കായി ആശയവിനിമയ ലൈനുകൾ ലഭ്യമാക്കുക."],
+        },
+        "dest_prefix": "{dest} ലക്ഷ്യമാക്കി പരിശോധിച്ച പാത പിന്തുടരുക ({dist:.1f} കി.മീ).",
+        "no_dest": "സുരക്ഷിത കേന്ദ്രം സ്ഥിരീകരിച്ചിട്ടില്ല. സുരക്ഷിത സ്ഥാനത്ത് തുടരുക.",
+        "route_advisory": "റൂട്ട് മുന്നറിയിപ്പ്: {warning}",
+    },
+    "pa": {
+        "flood": {
+            "actions": [
+                "ਤੁਰੰਤ ਸਭ ਤੋਂ ਉੱਚੀ ਮੰਜ਼ਿਲ ਜਾਂ ਉੱਚੀ ਥਾਂ 'ਤੇ ਜਾਓ।",
+                "ਵਗਦੇ ਹੜ੍ਹ ਦੇ ਪਾਣੀ ਵਿੱਚ ਤੁਰਨ ਜਾਂ ਗੱਡੀ ਚਲਾਉਣ ਤੋਂ ਬਚੋ।",
+            ],
+            "precautions": [
+                "ਜੇ ਸੁਰੱਖਿਅਤ ਹੋਵੇ ਤਾਂ ਮੁੱਖ ਬਿਜਲੀ ਅਤੇ ਗੈਸ ਬੰਦ ਕਰੋ।",
+                "ਐਮਰਜੈਂਸੀ ਕਿੱਟ, ਦਵਾਈਆਂ ਅਤੇ ਚਾਰਜ ਕੀਤਾ ਫ਼ੋਨ ਵਾਟਰਪ੍ਰੂਫ਼ ਬੈਗ ਵਿੱਚ ਰੱਖੋ।",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "ਨੇੜਲੇ ਸੁਰੱਖਿਅਤ ਰਸਤੇ ਰਾਹੀਂ ਤੁਰੰਤ ਇਮਾਰਤ ਖਾਲੀ ਕਰੋ; ਧੂੰਏਂ ਦੇ ਹੇਠਾਂ ਝੁਕ ਕੇ ਰਹੋ।",
+                "ਅੱਗ ਫੈਲਣ ਤੋਂ ਰੋਕਣ ਲਈ ਦਰਵਾਜ਼ੇ ਬੰਦ ਕਰੋ।",
+            ],
+            "precautions": [
+                "ਅੱਗ ਦੌਰਾਨ ਕਦੇ ਵੀ ਲਿਫਟ ਦੀ ਵਰਤੋਂ ਨਾ ਕਰੋ।",
+                "ਧੂੰਆਂ ਹੋਣ 'ਤੇ ਗਿੱਲੇ ਕੱਪੜੇ ਨਾਲ ਮੂੰਹ ਅਤੇ ਨੱਕ ਢੱਕੋ।",
+            ],
+        },
+        "landslide": {
+            "actions": ["ਖੜ੍ਹੀਆਂ ਢਲਾਣਾਂ ਅਤੇ ਕਮਜ਼ੋਰ ਕੰਧਾਂ ਤੋਂ ਦੂਰ ਰਹੋ।"],
+            "precautions": ["ਪਹਾੜੀ ਨਾਲਿਆਂ ਅਤੇ ਨੀਵੀਆਂ ਥਾਵਾਂ ਤੋਂ ਬਚੋ।"],
+        },
+        "medical": {
+            "actions": [
+                "ਮਰੀਜ਼ ਨੂੰ ਸ਼ਾਂਤ ਰੱਖੋ; ਤੁਰੰਤ ਖ਼ਤਰਾ ਨਾ ਹੋਣ ਤੱਕ ਜ਼ਖਮੀ ਵਿਅਕਤੀ ਨੂੰ ਨਾ ਹਿਲਾਓ।",
+                "ਜ਼ਿਆਦਾ ਖੂਨ ਵਹਿਣ ਵਾਲੇ ਜ਼ਖਮਾਂ 'ਤੇ ਸਾਫ਼ ਦਬਾਅ ਪਾਓ।",
+            ],
+            "precautions": ["ਮੈਡੀਕਲ ਟੀਮ ਲਈ ਰਸਤਾ ਖਾਲੀ ਰੱਖੋ।"],
+        },
+        "general": {
+            "actions": ["ਸੁਰੱਖਿਅਤ ਸਥਾਨ 'ਤੇ ਰਹੋ ਅਤੇ ਬਚਾਅ ਟੀਮ ਦੀਆਂ ਹਦਾਇਤਾਂ ਦੀ ਉਡੀਕ ਕਰੋ।"],
+            "precautions": ["ਅਪਡੇਟਸ ਲਈ ਸੰਪਰਕ ਲਾਈਨਾਂ ਖੁੱਲ੍ਹੀਆਂ ਰੱਖੋ।"],
+        },
+        "dest_prefix": "{dest} ਵੱਲ ਪ੍ਰਮਾਣਿਤ ਰਸਤੇ ਦੀ ਪਾਲਣਾ ਕਰੋ ({dist:.1f} ਕਿਲੋਮੀਟਰ)।",
+        "no_dest": "ਕੋਈ ਸੁਰੱਖਿਅਤ ਕੇਂਦਰ ਫਿਲਹਾਲ ਤੈਅ ਨਹੀਂ ਹੈ। ਸੁਰੱਖਿਅਤ ਥਾਂ 'ਤੇ ਰਹੋ।",
+        "route_advisory": "ਰਸਤਾ ਸਲਾਹ: {warning}",
+    },
+    "ur": {
+        "flood": {
+            "actions": [
+                "فوری طور پر اونچی منزل یا محفوظ مقام پر منتقل ہو جائیں۔",
+                "بہتے ہوئے سیلابی پانی میں چلنے یا گاڑی چلانے سے گریز کریں۔",
+            ],
+            "precautions": [
+                "اگر محفوظ ہو تو مین بجلی کا سوئچ اور گیس والو بند کر دیں۔",
+                "ایمرجنسی کٹ، ادویات اور موبائل فون واٹر پروف بیگ میں رکھیں۔",
+            ],
+        },
+        "fire": {
+            "actions": [
+                "قریبی محفوظ راستے سے فوری عمارت خالی کریں؛ دھوئیں کے نیچے جھک کر رہیں۔",
+                "آگ کے پھیلاؤ کو سست کرنے کے لیے پیچھے کے دروازے بند کر دیں۔",
+            ],
+            "precautions": [
+                "آگ کے دوران کبھی بھی لفٹ کا استعمال نہ کریں۔",
+                "دھواں ہونے کی صورت میں گیلے کپڑے سے منہ اور ناک ڈھانپیں۔",
+            ],
+        },
+        "landslide": {
+            "actions": ["ڈھلوانوں اور کمزور دیواروں سے دور رہیں۔"],
+            "precautions": ["سیلابی نالوں اور نشیبی علاقوں سے بچیں۔"],
+        },
+        "medical": {
+            "actions": [
+                "مریض کو پرسکون رکھیں؛ فوری خطرہ نہ ہونے تک زخمی شخص کو مت ہلائیں۔",
+                "خون کے بہاؤ کو روکنے کے لیے صاف دباؤ ڈالیں۔",
+            ],
+            "precautions": ["طبی عملے کے لیے راستہ صاف رکھیں۔"],
+        },
+        "general": {
+            "actions": ["محفوظ مقام پر رہیں اور امدادی ٹیم کی ہدایات کا انتظار کریں۔"],
+            "precautions": ["ہنگامی اطلاعات کے لیے رابطہ بحال رکھیں۔"],
+        },
+        "dest_prefix": "{dest} کی طرف تصدیق شدہ راستے پر چلیں ({dist:.1f} کلومیٹر)۔",
+        "no_dest": "کوئی محفوظ پناہ گاہ فی الحال تصدیق شدہ نہیں ہے۔ محفوظ مقام پر رہیں۔",
+        "route_advisory": "راستہ ایڈوائزری: {warning}",
+    },
+}
+
+
 class SafetyGuidanceAgent:
     """
     Citizen Safety Guidance Advisory Agent.
@@ -118,7 +605,11 @@ class SafetyGuidanceAgent:
                 destination.distance_km = float(route.distance_km)
                 destination.estimated_drive_minutes = float(route.estimated_duration_minutes)
 
-        # 6. Contextual Immediate Actions and Precautions
+        # Extract report language metadata
+        report_lang = report_doc.get("language") or {"code": "en", "name": "English", "source": "DEFAULT"}
+        lang_code = report_lang.get("code", "en").lower()
+
+        # 6. Contextual Immediate Actions and Precautions (Multilingual)
         immediate_actions, precautions = cls._synthesize_contextual_actions(
             emergency_type=emergency_type,
             description=description,
@@ -127,6 +618,7 @@ class SafetyGuidanceAgent:
             visual_evidence=visual_evidence,
             llm_extraction=llm_extraction,
             route=route,
+            language_code=lang_code,
         )
 
         # 7. HITL Policy: Critical evacuation directives require officer approval
@@ -178,6 +670,7 @@ class SafetyGuidanceAgent:
             version=next_version,
             change_reason=change_reason,
             trigger_event_id=trigger_event_id,
+            language=report_lang,
         )
 
         # Persist to MongoDB
@@ -480,59 +973,121 @@ class SafetyGuidanceAgent:
 
         return SeverityLevel.MEDIUM
 
+    
+
     @classmethod
     def _synthesize_contextual_actions(
         cls,
         emergency_type: str,
         description: str,
         risk_level: SeverityLevel,
-        destination: Optional[VerifiedDestination],
-        visual_evidence: Dict[str, Any],
-        llm_extraction: Dict[str, Any],
-        route: Optional[RouteDetails],
+        destination: Optional[VerifiedDestination] = None,
+        visual_evidence: Optional[Dict[str, Any]] = None,
+        llm_extraction: Optional[Dict[str, Any]] = None,
+        route: Optional[RouteDetails] = None,
+        language_code: str = "en",
     ) -> Tuple[List[str], List[str]]:
         """
-        Synthesizes specific, contextual action items and precautions based on live evidence.
+        Synthesizes deterministic, life-safety verified immediate actions and precautions
+        in the citizen's preferred/detected language.
         """
-        et_lower = str(emergency_type).lower()
-        desc_lower = description.lower()
-        actions: List[str] = []
-        precautions: List[str] = []
+        lang = (language_code or "en").lower().strip()
+        lang_template = MULTILINGUAL_SAFETY_TEMPLATES.get(lang) or MULTILINGUAL_SAFETY_TEMPLATES.get("en")
 
-        # Contextual actions based on emergency type & evidence
-        if "flood" in et_lower or "water" in desc_lower:
-            actions.append("Move to highest accessible floor or elevated ground immediately.")
-            actions.append("Avoid walking, wading, or driving through moving floodwaters.")
-            precautions.append("Turn off main electrical breaker and gas valve if safely accessible.")
-            precautions.append("Keep emergency kit, medications, and fully charged phone sealed in waterproof bag.")
-        elif "fire" in et_lower or "smoke" in desc_lower:
-            actions.append("Evacuate building immediately via nearest safe ground exit; stay low under smoke.")
-            actions.append("Close doors behind you to slow flame progression.")
-            precautions.append("Never use elevators during a structural fire emergency.")
-            precautions.append("Cover mouth and nose with a damp cloth if smoke is present.")
-        elif "landslide" in et_lower or "collapse" in desc_lower:
-            actions.append("Move away from steep slopes, retaining walls, and compromised foundations.")
-            actions.append("Listen for unusual cracking sounds, tumbling rocks, or sudden water surges.")
-            precautions.append("Avoid river valleys and low-lying drainage channels during active slope movement.")
-        elif "medical" in et_lower or "accident" in desc_lower:
-            actions.append("Keep patient still, calm, and warm; do not move injured persons unless immediate hazard threatens.")
-            actions.append("Apply direct clean pressure to severe bleeding wounds.")
-            precautions.append("Clear access path for arriving emergency medical responders.")
+        em_lower = f"{emergency_type} {description}".lower()
+        if "flood" in em_lower or "water" in em_lower or "rain" in em_lower or "submerged" in em_lower:
+            cat_key = "flood"
+        elif "fire" in em_lower or "smoke" in em_lower or "flame" in em_lower or "burn" in em_lower:
+            cat_key = "fire"
+        elif "landslide" in em_lower or "slope" in em_lower or "collapse" in em_lower:
+            cat_key = "landslide"
+        elif "med" in em_lower or "injur" in em_lower or "bleeding" in em_lower or "unconscious" in em_lower or "accident" in em_lower:
+            cat_key = "medical"
         else:
-            actions.append("Remain in a safe, sheltered location and await direct responder coordination.")
-            precautions.append("Keep communication lines clear for emergency responder updates.")
+            cat_key = "general"
 
-        # Destination & Route Context
+        cat_template = lang_template.get(cat_key, lang_template.get("general", {}))
+        immediate_actions = list(cat_template.get("actions", []))
+        precautions = list(cat_template.get("precautions", []))
+
         if destination:
-            actions.append(f"Follow verified route towards {destination.destination_name} ({destination.distance_km:.1f} km).")
-        else:
-            actions.append("No safe evacuation destination is currently confirmed. Remain sheltered in place.")
+            dest_prefix = lang_template.get("dest_prefix", "Follow verified route towards {dest} ({dist:.1f} km).")
+            immediate_actions.append(
+                dest_prefix.format(
+                    dest=destination.destination_name,
+                    dist=destination.distance_km,
+                )
+            )
+        elif lang_template.get("no_dest"):
+            immediate_actions.append(lang_template["no_dest"])
 
         if route and route.route_warnings:
-            for w in route.route_warnings[:2]:
-                precautions.append(f"Route Advisory: {w}")
+            route_adv = lang_template.get("route_advisory", "Route Advisory: {warning}")
+            for rw in route.route_warnings[:2]:
+                precautions.append(route_adv.format(warning=rw))
 
-        return actions, precautions
+        return immediate_actions, precautions
+
+    @classmethod
+    def localize_guidance(
+        cls,
+        guidance: CitizenSafetyGuidance,
+        target_lang: str,
+    ) -> CitizenSafetyGuidance:
+        """
+        Translates/localizes the advisory actions and precautions of a guidance object into the target language.
+        Does not mutate database persistence; returns localized copy for client viewing.
+        """
+        lang = (target_lang or "en").lower().strip()
+        lang_template = MULTILINGUAL_SAFETY_TEMPLATES.get(lang) or MULTILINGUAL_SAFETY_TEMPLATES.get("en")
+        
+        em_lower = (guidance.emergency_type or "").lower()
+        if "flood" in em_lower or "water" in em_lower or "rain" in em_lower or "submerged" in em_lower:
+            cat_key = "flood"
+        elif "fire" in em_lower or "smoke" in em_lower or "flame" in em_lower or "burn" in em_lower:
+            cat_key = "fire"
+        elif "landslide" in em_lower or "slope" in em_lower or "collapse" in em_lower:
+            cat_key = "landslide"
+        elif "med" in em_lower or "injur" in em_lower or "bleeding" in em_lower or "accident" in em_lower:
+            cat_key = "medical"
+        else:
+            cat_key = "general"
+
+        cat_template = lang_template.get(cat_key, lang_template.get("general", {}))
+        immediate_actions = list(cat_template.get("actions", []))
+        precautions = list(cat_template.get("precautions", []))
+
+        if guidance.recommended_destination:
+            dest_prefix = lang_template.get("dest_prefix", "Follow verified route towards {dest} ({dist:.1f} km).")
+            immediate_actions.append(
+                dest_prefix.format(
+                    dest=guidance.recommended_destination.destination_name,
+                    dist=guidance.recommended_destination.distance_km,
+                )
+            )
+        elif lang_template.get("no_dest"):
+            immediate_actions.append(lang_template["no_dest"])
+
+        if guidance.route_warnings:
+            route_adv = lang_template.get("route_advisory", "Route Advisory: {warning}")
+            for rw in guidance.route_warnings[:2]:
+                precautions.append(route_adv.format(warning=rw))
+
+        supported_names = {
+            "en": "English", "te": "తెలుగు (Telugu)", "hi": "हिन्दी (Hindi)", "ta": "தமிழ் (Tamil)",
+            "kn": "ಕನ್ನಡ (Kannada)", "mr": "मराठी (Marathi)", "bn": "বাংলা (Bengali)", "gu": "ગુજરાતી (Gujarati)",
+            "ml": "മലയാളം (Malayalam)", "pa": "ਪੰਜਾਬੀ (Punjabi)", "ur": "اردو (Urdu)",
+        }
+        
+        guidance_dict = guidance.model_dump()
+        guidance_dict["immediate_actions"] = immediate_actions
+        guidance_dict["precautions"] = precautions
+        guidance_dict["language"] = {
+            "code": lang,
+            "name": supported_names.get(lang, lang.title()),
+            "source": "CLIENT_OVERRIDE",
+        }
+        return CitizenSafetyGuidance(**guidance_dict)
 
     @classmethod
     async def evaluate_and_update_guidance_for_event(
@@ -858,4 +1413,5 @@ class SafetyGuidanceAgent:
             change_reason=doc.get("change_reason"),
             is_stale=is_stale_flag,
             history=doc.get("history", []),
+            language=doc.get("language"),
         )

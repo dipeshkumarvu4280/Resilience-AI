@@ -247,6 +247,7 @@ async def get_safety_guidance_history(
 @router.get("/safety-guidance/{secure_token}", response_model=CitizenSafetyGuidanceResponse)
 async def get_safety_guidance_by_token(
     secure_token: str,
+    lang: Optional[str] = Query(None, description="Optional language code override for guidance actions and precautions"),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """
@@ -274,6 +275,8 @@ async def get_safety_guidance_by_token(
         })
         if latest_doc:
             latest_guidance = SafetyGuidanceAgent._doc_to_guidance(latest_doc)
+            if lang:
+                latest_guidance = SafetyGuidanceAgent.localize_guidance(latest_guidance, lang)
             return CitizenSafetyGuidanceResponse(
                 success=True,
                 guidance=latest_guidance,
@@ -283,6 +286,8 @@ async def get_safety_guidance_by_token(
             )
 
     guidance = SafetyGuidanceAgent._doc_to_guidance(doc)
+    if lang:
+        guidance = SafetyGuidanceAgent.localize_guidance(guidance, lang)
     return CitizenSafetyGuidanceResponse(
         success=True,
         guidance=guidance,
@@ -295,6 +300,7 @@ async def get_safety_guidance_by_token(
 @router.get("/reports/{report_id}/safety-guidance", response_model=CitizenSafetyGuidanceResponse)
 async def get_safety_guidance_for_report(
     report_id: str,
+    lang: Optional[str] = Query(None, description="Optional language code override for guidance actions and precautions"),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """
@@ -306,6 +312,8 @@ async def get_safety_guidance_for_report(
             db=db,
             force_refresh=False,
         )
+        if lang:
+            guidance = SafetyGuidanceAgent.localize_guidance(guidance, lang)
         return CitizenSafetyGuidanceResponse(
             success=True,
             guidance=guidance,

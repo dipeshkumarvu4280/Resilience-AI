@@ -685,6 +685,37 @@ async def create_emergency_report(
                 content_hash=evidence_record.content_hash,
             )
 
+    # 12d. Determine Language Metadata
+    detected_lang = getattr(llm_extraction, "detected_language", None) if llm_extraction else None
+    if detected_lang and detected_lang.code:
+        report_language = {
+            "code": detected_lang.code.strip().lower(),
+            "name": detected_lang.name.strip(),
+            "confidence": float(detected_lang.confidence),
+            "is_mixed": bool(detected_lang.is_mixed),
+            "source": "LLM_EXTRACTION",
+            "detection_method": "nlp",
+        }
+    elif payload.preferred_language and payload.preferred_language.strip():
+        pref = payload.preferred_language.strip().lower()
+        report_language = {
+            "code": pref,
+            "name": pref.capitalize(),
+            "confidence": 0.85,
+            "is_mixed": False,
+            "source": "CITIZEN_SELECTION",
+            "detection_method": "user_preference",
+        }
+    else:
+        report_language = {
+            "code": "en",
+            "name": "English",
+            "confidence": 1.0,
+            "is_mixed": False,
+            "source": "DEFAULT",
+            "detection_method": "fallback",
+        }
+
     report_doc = {
         "report_id": report_id,
         "citizen_id": citizen_id,
@@ -693,6 +724,8 @@ async def create_emergency_report(
         "emergency_type": payload.emergency_type.value,
         "citizen_impact_level": payload.citizen_impact_level.value,
         "description": description,
+        "original_description": description,
+        "language": report_language,
         "location": canonical_location.model_dump(),
         "media": [m.model_dump() for m in (payload.media or [])],
         "evidence": evidence_record.model_dump() if evidence_record else None,
@@ -909,6 +942,8 @@ async def create_emergency_report(
         emergency_type=payload.emergency_type,
         citizen_impact_level=payload.citizen_impact_level,
         description=description,
+        original_description=description,
+        language=report_language,
         location=canonical_location,
         media=payload.media or [],
         evidence=evidence_record,
@@ -1010,6 +1045,8 @@ async def list_emergency_reports(
             emergency_type=et_obj,
             citizen_impact_level=impact_obj,
             description=doc.get("description", "Emergency report"),
+            original_description=doc.get("original_description") or doc.get("description"),
+            language=doc.get("language"),
             location=loc_payload,
             media=[MediaAttachment(**m) for m in doc.get("media", []) if isinstance(m, dict)],
             evidence=evidence_obj,
@@ -1120,6 +1157,8 @@ async def get_emergency_report(
         emergency_type=EmergencyType(report_doc["emergency_type"]),
         citizen_impact_level=impact_obj,
         description=report_doc["description"],
+        original_description=report_doc.get("original_description") or report_doc["description"],
+        language=report_doc.get("language"),
         location=LocationPayload(**report_doc["location"]),
         media=[MediaAttachment(**m) for m in report_doc.get("media", [])],
         evidence=evidence_obj,

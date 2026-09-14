@@ -628,6 +628,14 @@ export interface EmergencyReportResponse {
   situation_id?: string;
   safety_guidance_id?: string;
   safety_guidance_token?: string;
+  original_description?: string;
+  language?: {
+    code: string;
+    name: string;
+    source?: string;
+    confidence?: number;
+    is_mixed?: boolean;
+  };
   created_at: string;
   updated_at: string;
 }
@@ -740,6 +748,13 @@ export interface CitizenSafetyGuidance {
   trigger_event_id?: string | null;
   change_reason?: string | null;
   is_stale?: boolean;
+  language?: {
+    code: string;
+    name: string;
+    source?: string;
+    confidence?: number;
+    is_mixed?: boolean;
+  };
   history?: any[];
 }
 
