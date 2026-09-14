@@ -173,11 +173,15 @@ class PlacesService:
             if p_lat is not None and p_lng is not None:
                 dist = haversine_distance_km(origin_lat, origin_lng, float(p_lat), float(p_lng))
                 if dist <= radius_km:
-                    d_type_raw = doc.get("destination_type")
-                    try:
-                        d_type = DestinationType(d_type_raw) if d_type_raw else cls._map_category_to_destination_type(need_category)
-                    except Exception:
-                        d_type = cls._map_category_to_destination_type(need_category)
+                    p_types = doc.get("google_place_types") or []
+                    if p_types:
+                        d_type = cls.normalize_google_place_type(p_types)
+                    else:
+                        d_type_raw = str(doc.get("destination_type") or "").replace("DestinationType.", "").strip().upper()
+                        try:
+                            d_type = DestinationType(d_type_raw) if d_type_raw else cls.normalize_google_place_type(p_types)
+                        except Exception:
+                            d_type = cls.normalize_google_place_type(p_types)
 
                     results.append({
                         "facility_id": f"PLC-{doc.get('place_id', str(time.time()))}",
@@ -192,6 +196,7 @@ class PlacesService:
                         "last_checked": datetime.now(timezone.utc).isoformat(),
                         "rating": doc.get("rating"),
                         "open_now": doc.get("open_now"),
+                        "google_place_types": p_types,
                     })
         results.sort(key=lambda x: x["distance_km"])
         return results
@@ -207,6 +212,12 @@ class PlacesService:
             p_id = p.get("place_id")
             if not p_id:
                 continue
+            d_type_val = p.get("destination_type")
+            if isinstance(d_type_val, DestinationType):
+                d_type_str = d_type_val.value
+            else:
+                d_type_str = str(d_type_val).replace("DestinationType.", "").strip().upper()
+
             await db["google_places_cache"].update_one(
                 {"place_id": p_id},
                 {
@@ -219,7 +230,8 @@ class PlacesService:
                         "rating": p.get("rating"),
                         "open_now": p.get("open_now"),
                         "category": need_category.upper(),
-                        "destination_type": str(p.get("destination_type")),
+                        "destination_type": d_type_str,
+                        "google_place_types": p.get("google_place_types", []),
                         "provider": "GOOGLE",
                         "last_updated": datetime.now(timezone.utc),
                     }
@@ -245,11 +257,15 @@ class PlacesService:
             if p_lat is not None and p_lng is not None:
                 dist = haversine_distance_km(origin_lat, origin_lng, float(p_lat), float(p_lng))
                 if dist <= radius_km:
-                    d_type_raw = doc.get("destination_type")
-                    try:
-                        d_type = DestinationType(d_type_raw) if d_type_raw else cls._map_category_to_destination_type(need_category)
-                    except Exception:
-                        d_type = cls._map_category_to_destination_type(need_category)
+                    p_types = doc.get("google_place_types") or []
+                    if p_types:
+                        d_type = cls.normalize_google_place_type(p_types)
+                    else:
+                        d_type_raw = str(doc.get("destination_type") or "").replace("DestinationType.", "").strip().upper()
+                        try:
+                            d_type = DestinationType(d_type_raw) if d_type_raw else cls.normalize_google_place_type(p_types)
+                        except Exception:
+                            d_type = cls.normalize_google_place_type(p_types)
 
                     results.append({
                         "facility_id": f"PLC-{doc.get('place_id', str(time.time()))}",
@@ -264,6 +280,7 @@ class PlacesService:
                         "last_checked": datetime.now(timezone.utc).isoformat(),
                         "rating": doc.get("rating"),
                         "open_now": doc.get("open_now"),
+                        "google_place_types": p_types,
                     })
         results.sort(key=lambda x: x["distance_km"])
         return results
@@ -344,7 +361,7 @@ class PlacesService:
                                     "facility_id": f"PLC-{p.get('id', str(time.time()))}",
                                     "place_id": p.get("id"),
                                     "name": name,
-                                    "destination_type": cls._map_types_to_destination_type(p_types, need_category),
+                                    "destination_type": cls.normalize_google_place_type(p_types),
                                     "latitude": float(p_lat),
                                     "longitude": float(p_lng),
                                     "address": p.get("formattedAddress") or "Google Verified Site",
@@ -353,6 +370,7 @@ class PlacesService:
                                     "last_checked": datetime.now(timezone.utc).isoformat(),
                                     "rating": p.get("rating"),
                                     "open_now": p.get("currentOpeningHours", {}).get("openNow"),
+                                    "google_place_types": p_types,
                                 })
                         # Sort strictly by geographic distance from origin
                         results.sort(key=lambda x: x["distance_km"])
@@ -372,11 +390,11 @@ class PlacesService:
     def _is_valid_place_type(cls, place_types: List[str], need_category: str) -> bool:
         """
         Strict situation-aware type filter to prevent commercial stores, wholesalers,
-        restaurants, rice traders, and irrelevant businesses from entering emergency recommendations.
+        restaurants, salons, tailor shops, and irrelevant businesses from entering emergency recommendations.
         """
         if not place_types:
-            return True
-        cat = need_category.upper()
+            return False
+
         types_lower = [str(t).lower() for t in place_types]
         types_set = set(types_lower)
 
@@ -384,69 +402,80 @@ class PlacesService:
             "restaurant", "food", "grocery_or_supermarket", "supermarket",
             "store", "clothing_store", "wholesaler", "liquor_store",
             "bakery", "cafe", "meal_takeaway", "meal_delivery",
-            "beauty_salon", "hair_care", "laundry", "bar", "convenience_store",
-            "department_store", "shoe_store", "shopping_mall", "home_goods_store"
+            "beauty_salon", "hair_care", "spa", "laundry", "bar", "night_club",
+            "convenience_store", "department_store", "shoe_store", "shopping_mall",
+            "home_goods_store", "jewelry_store", "florist", "furniture_store",
+            "electronics_store", "book_store", "pet_store", "car_dealer",
+            "car_repair", "car_wash", "gas_station", "parking", "bank",
+            "atm", "real_estate_agency", "travel_agency", "insurance_agency",
+            "hair_salon", "beauty_parlor", "tailor", "hairdresser", "event_venue"
         }
 
+        # Any commercial business without an explicit operational emergency facility type is rejected
+        operational_types = {
+            "hospital", "medical_clinic", "doctor", "health", "pharmacy",
+            "fire_station",
+            "police", "law_enforcement",
+            "bus_station", "transit_station", "train_station",
+            "community_center", "city_hall", "local_government_office", "school", "stadium"
+        }
+
+        if not types_set.intersection(operational_types):
+            return False
+
+        if types_set.intersection(disallowed_commercial) and not types_set.intersection({"hospital", "doctor", "medical_clinic", "fire_station", "police"}):
+            return False
+
+        cat = need_category.upper()
         if cat in ["MEDICAL", "ROAD_ACCIDENT"]:
-            valid_med = {"hospital", "medical_clinic", "doctor", "health", "pharmacy", "dentist", "physiotherapist"}
-            if not types_set.intersection(valid_med):
-                return False
-            if types_set.intersection(disallowed_commercial) and not types_set.intersection({"hospital", "doctor", "medical_clinic"}):
-                return False
-            return True
+            return bool(types_set.intersection({"hospital", "medical_clinic", "doctor", "health", "pharmacy"}))
         elif cat == "POLICE":
-            valid_pol = {"police", "local_government_office", "courthouse", "law_enforcement"}
-            if not types_set.intersection(valid_pol):
-                return False
-            if types_set.intersection(disallowed_commercial):
-                return False
-            return True
+            return bool(types_set.intersection({"police", "law_enforcement"}))
         elif cat == "FIRE":
-            valid_fire = {"fire_station", "hospital", "medical_clinic", "doctor", "community_center", "city_hall", "local_government_office"}
-            if not types_set.intersection(valid_fire):
-                return False
-            if types_set.intersection(disallowed_commercial) and not types_set.intersection({"hospital", "doctor", "fire_station"}):
-                return False
-            return True
+            # Fire search returns fire stations, hospitals/clinics/doctors, or community centers
+            return bool(types_set.intersection({"fire_station", "hospital", "medical_clinic", "doctor", "community_center", "city_hall"}))
         elif cat == "TRANSIT":
             return bool(types_set.intersection({"bus_station", "transit_station", "bus_stop", "train_station", "subway_station", "light_rail_station"}))
         elif cat in ["SHELTER", "FLOOD"]:
-            valid_shl = {"community_center", "city_hall", "local_government_office", "civic_center", "place_of_worship", "school", "stadium", "hospital", "medical_clinic"}
-            if types_set.intersection(disallowed_commercial) and not types_set.intersection({"hospital", "medical_clinic"}):
-                return False
-            return bool(types_set.intersection(valid_shl))
+            return bool(types_set.intersection({"community_center", "city_hall", "local_government_office", "civic_center", "place_of_worship", "school", "stadium", "hospital", "medical_clinic"}))
 
         return True
 
     @classmethod
-    def _map_types_to_destination_type(cls, place_types: List[str], default_category: str) -> DestinationType:
+    def normalize_google_place_type(cls, place_types: List[str]) -> DestinationType:
+        """
+        Authoritative Google Places Type Normalizer.
+        Deterministic precedence based on operational emergency response taxonomy:
+        1. Healthcare (hospital, clinic, doctor, health, pharmacy) -> HEALTHCARE
+        2. Fire Station (fire_station) -> FIRE_STATION
+        3. Police Station (police, law_enforcement) -> POLICE
+        4. Transit / Evacuation transport (bus_station, transit_station, train_station, etc.) -> BUS_STATION
+        5. Shelter / Civic Center (community_center, city_hall, local_government_office, school, stadium) -> SHELTER
+        6. Other -> OTHER
+        """
         if not place_types:
-            return cls._map_category_to_destination_type(default_category)
-        t_set = set(str(t).lower() for t in place_types)
-        if t_set.intersection({"hospital", "medical_clinic", "doctor", "health"}):
-            return DestinationType.HEALTHCARE
-        elif t_set.intersection({"police"}):
-            return DestinationType.POLICE
-        elif t_set.intersection({"fire_station"}):
-            return DestinationType.FIRE_STATION
-        elif t_set.intersection({"bus_station", "transit_station", "bus_stop"}):
-            return DestinationType.BUS_STATION
-        elif t_set.intersection({"community_center", "city_hall", "local_government_office"}):
-            return DestinationType.SHELTER
-        return cls._map_category_to_destination_type(default_category)
+            return DestinationType.OTHER
 
-    @classmethod
-    def _map_category_to_destination_type(cls, category: str) -> DestinationType:
-        cat_u = category.upper()
-        if "MED" in cat_u or "HOSP" in cat_u:
+        types_set = set(str(t).lower() for t in place_types)
+
+        # 1. Healthcare / Medical
+        if types_set.intersection({"hospital", "medical_clinic", "doctor", "health", "pharmacy", "medical_center"}):
             return DestinationType.HEALTHCARE
-        elif "POLICE" in cat_u or "SEC" in cat_u:
-            return DestinationType.POLICE
-        elif "FIRE" in cat_u:
+
+        # 2. Fire Station / Rescue
+        if types_set.intersection({"fire_station"}):
             return DestinationType.FIRE_STATION
-        elif "BUS" in cat_u or "TRANSIT" in cat_u:
+
+        # 3. Police / Law Enforcement
+        if types_set.intersection({"police", "law_enforcement"}):
+            return DestinationType.POLICE
+
+        # 4. Transit / Evacuation Bus
+        if types_set.intersection({"bus_station", "transit_station", "bus_stop", "train_station", "subway_station", "light_rail_station"}):
             return DestinationType.BUS_STATION
-        elif "ASSEMBLY" in cat_u:
-            return DestinationType.SAFE_ASSEMBLY_AREA
-        return DestinationType.SHELTER
+
+        # 5. Evacuation Shelter / Civic Centers / Assembly
+        if types_set.intersection({"community_center", "city_hall", "local_government_office", "civic_center", "place_of_worship", "school", "stadium", "campground"}):
+            return DestinationType.SHELTER
+
+        return DestinationType.OTHER

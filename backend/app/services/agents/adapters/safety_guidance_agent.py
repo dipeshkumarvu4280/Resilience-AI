@@ -767,12 +767,15 @@ class SafetyGuidanceAgent:
                         continue
                     seen_coordinates.add(ck)
 
-                    p_type = p.get("destination_type", dest_type_primary)
+                    p_type = p.get("destination_type")
                     if isinstance(p_type, str):
+                        clean_str = p_type.replace("DestinationType.", "").strip().upper()
                         try:
-                            p_type = DestinationType(p_type)
+                            p_type = DestinationType(clean_str)
                         except Exception:
-                            p_type = dest_type_primary
+                            p_type = PlacesService.normalize_google_place_type(p.get("google_place_types", []))
+                    elif not isinstance(p_type, DestinationType):
+                        p_type = PlacesService.normalize_google_place_type(p.get("google_place_types", []))
 
                     dist_km = p.get("distance_km", round(haversine_distance_km(origin_lat, origin_lng, p["latitude"], p["longitude"]), 2))
                     drive_min = p.get("estimated_drive_minutes") or PlacesService.estimate_drive_time_minutes(dist_km)
@@ -795,10 +798,12 @@ class SafetyGuidanceAgent:
                             operational_status="OPERATIONAL",
                             suitability_reason=f"Real-time verified operational {p_type.value.replace('_', ' ').lower()} ({dist_km:.1f} km, ~{int(drive_min)} min drive).",
                             contact_phone=p.get("contact_phone"),
+                            google_place_types=p.get("google_place_types", []),
                         )
                     )
             except Exception as e:
                 logger.warning(f"Live places discovery failed: {e}")
+
 
         # 2. Local Operational Database Query (MongoDB: healthcare_facilities and resources)
         if need_category == "MEDICAL":

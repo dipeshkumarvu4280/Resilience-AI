@@ -97,6 +97,7 @@ class VerifiedDestination(BaseModel):
     estimated_drive_minutes: Optional[float] = None
     rating: Optional[float] = None
     open_now: Optional[bool] = None
+    google_place_types: Optional[List[str]] = Field(default_factory=list)
 
 
 class HazardAvoidanceZone(BaseModel):

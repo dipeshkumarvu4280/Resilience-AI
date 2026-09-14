@@ -206,6 +206,7 @@ export const SafetyGuidancePage: React.FC = () => {
     if (t.includes('HEALTH') || t.includes('HOSPITAL') || t.includes('MEDICAL')) {
       return {
         label: 'Healthcare / Hospital',
+        displayType: 'HOSPITAL',
         icon: HeartPulse,
         iconBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         badge: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -215,6 +216,7 @@ export const SafetyGuidancePage: React.FC = () => {
     if (t.includes('POLICE') || t.includes('SECURITY') || t.includes('LAW')) {
       return {
         label: 'Police / Law Enforcement',
+        displayType: 'POLICE STATION',
         icon: Siren,
         iconBg: 'bg-blue-50 text-blue-700 border-blue-200',
         badge: 'bg-blue-50 text-blue-800 border-blue-200',
@@ -224,6 +226,7 @@ export const SafetyGuidancePage: React.FC = () => {
     if (t.includes('FIRE')) {
       return {
         label: 'Fire Station / Rescue',
+        displayType: 'FIRE STATION',
         icon: Flame,
         iconBg: 'bg-orange-50 text-orange-700 border-orange-200',
         badge: 'bg-orange-50 text-orange-800 border-orange-200',
@@ -233,6 +236,7 @@ export const SafetyGuidancePage: React.FC = () => {
     if (t.includes('BUS') || t.includes('TRANSIT') || t.includes('TRANSPORT')) {
       return {
         label: 'Transit / Bus Station',
+        displayType: 'TRANSIT STATION',
         icon: Navigation,
         iconBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
         badge: 'bg-indigo-50 text-indigo-800 border-indigo-200',
@@ -242,20 +246,33 @@ export const SafetyGuidancePage: React.FC = () => {
     if (t.includes('ASSEMBLY')) {
       return {
         label: 'Safe Assembly Area',
+        displayType: 'SAFE ASSEMBLY AREA',
         icon: MapPin,
         iconBg: 'bg-purple-50 text-purple-700 border-purple-200',
         badge: 'bg-purple-50 text-purple-800 border-purple-200',
         mapIconColor: '#9333EA',
       };
     }
+    if (t.includes('SHELTER')) {
+      return {
+        label: 'Emergency Shelter',
+        displayType: 'EMERGENCY SHELTER',
+        icon: Home,
+        iconBg: 'bg-amber-50 text-amber-700 border-amber-200',
+        badge: 'bg-amber-50 text-amber-800 border-amber-200',
+        mapIconColor: '#D97706',
+      };
+    }
     return {
-      label: 'Emergency Shelter',
-      icon: Home,
-      iconBg: 'bg-amber-50 text-amber-700 border-amber-200',
-      badge: 'bg-amber-50 text-amber-800 border-amber-200',
-      mapIconColor: '#D97706',
+      label: 'Emergency Facility',
+      displayType: 'FACILITY',
+      icon: MapPin,
+      iconBg: 'bg-slate-100 text-slate-700 border-slate-300',
+      badge: 'bg-slate-100 text-slate-800 border-slate-300',
+      mapIconColor: '#475569',
     };
   };
+
 
   // Active Destination (Primary or selected alternative)
   const activeDest: VerifiedDestination | null = selectedAlternative || guidance?.recommended_destination || null;
@@ -801,9 +818,10 @@ export const SafetyGuidancePage: React.FC = () => {
                     </div>
                     {dest && (
                       <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${destConfig.badge}`}>
-                        {dest.destination_type}
+                        {destConfig.displayType || dest.destination_type.replace('_', ' ')}
                       </span>
                     )}
+
                   </div>
 
                   {dest ? (
@@ -964,8 +982,9 @@ export const SafetyGuidancePage: React.FC = () => {
                               </span>
                             )}
                             <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${altConfig.badge}`}>
-                              {alt.destination_type}
+                              {altConfig.displayType || alt.destination_type.replace('_', ' ')}
                             </span>
+
                           </div>
                         </div>
 
