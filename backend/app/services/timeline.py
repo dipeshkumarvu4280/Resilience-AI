@@ -18,14 +18,17 @@ def generate_event_id() -> str:
 # UNDER_ASSESSMENT -> ACTION_REQUIRED
 # ACTION_REQUIRED -> RESOLVED
 ALLOWED_STATUS_TRANSITIONS: Dict[ReportStatus, List[ReportStatus]] = {
-    ReportStatus.RECEIVED: [ReportStatus.ACKNOWLEDGED],
-    ReportStatus.ACKNOWLEDGED: [ReportStatus.UNDER_ASSESSMENT, ReportStatus.RECEIVED],
-    ReportStatus.UNDER_ASSESSMENT: [ReportStatus.ACTION_REQUIRED, ReportStatus.ACKNOWLEDGED],
-    ReportStatus.ACTION_REQUIRED: [ReportStatus.RESOLVED, ReportStatus.UNDER_ASSESSMENT],
+    ReportStatus.RECEIVED: [ReportStatus.ACKNOWLEDGED, ReportStatus.REJECTED],
+    ReportStatus.ACKNOWLEDGED: [ReportStatus.UNDER_ASSESSMENT, ReportStatus.RECEIVED, ReportStatus.REJECTED],
+    ReportStatus.UNDER_ASSESSMENT: [ReportStatus.ACTION_REQUIRED, ReportStatus.ACKNOWLEDGED, ReportStatus.REJECTED],
+    ReportStatus.ACTION_REQUIRED: [ReportStatus.RESOLVED, ReportStatus.UNDER_ASSESSMENT, ReportStatus.REJECTED],
     ReportStatus.RESOLVED: [ReportStatus.UNDER_ASSESSMENT, ReportStatus.ACTION_REQUIRED],
+    ReportStatus.REJECTED: [],
     # Aliases
-    ReportStatus.VERIFIED: [ReportStatus.ACKNOWLEDGED, ReportStatus.UNDER_ASSESSMENT],
-    ReportStatus.IN_PROGRESS: [ReportStatus.ACTION_REQUIRED, ReportStatus.RESOLVED],
+    ReportStatus.VERIFIED: [ReportStatus.ACKNOWLEDGED, ReportStatus.UNDER_ASSESSMENT, ReportStatus.REJECTED],
+    ReportStatus.IN_PROGRESS: [ReportStatus.ACTION_REQUIRED, ReportStatus.RESOLVED, ReportStatus.REJECTED],
+    ReportStatus.SUBMITTED: [ReportStatus.ACKNOWLEDGED, ReportStatus.REJECTED],
+    ReportStatus.PENDING: [ReportStatus.ACKNOWLEDGED, ReportStatus.REJECTED],
 }
 
 
@@ -78,6 +81,8 @@ async def record_timeline_event(
     audit_doc = {
         "event_id": event_id,
         "report_id": report_id,
+        "entity_id": report_id,
+        "entity_type": "CITIZEN_REPORT",
         "action": event_type.value,
         "actor_id": actor_id,
         "actor_name": actor_name,

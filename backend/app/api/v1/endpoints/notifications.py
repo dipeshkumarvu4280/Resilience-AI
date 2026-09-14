@@ -3,7 +3,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_database
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.config import settings
 from app.models.enums import NotificationCategory, NotificationSeverity
 from app.models.notification import (
@@ -273,6 +274,18 @@ async def get_channel_status(
     Never exposes provider tokens or credentials.
     """
     return service.get_channel_status()
+
+
+@router.get("/push/status", summary="Get Truthful Browser Web Push Diagnostic Status")
+async def get_push_diagnostic_status(
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Dict[str, Any]:
+    """
+    Read-only diagnostic endpoint reporting truthful Web Push subsystem status.
+    Never exposes VAPID private keys, auth secrets, or credentials.
+    """
+    from app.services.notification.web_push_service import WebPushService
+    return await WebPushService.get_diagnostic_status(db=db)
 
 
 @router.get("/preferences", response_model=NotificationPreference)

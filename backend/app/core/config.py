@@ -194,8 +194,9 @@ class Settings(BaseSettings):
         return (self.WHATSAPP_VERIFY_TOKEN or self.WHATSAPP_WEBHOOK_VERIFY_TOKEN or "").strip()
     
     # Phase 1: Live Web Push & VAPID Configuration (RFC 8291 / 8292)
-    VAPID_PUBLIC_KEY: Optional[str] = None
-    VAPID_PRIVATE_KEY: Optional[str] = None
+    WEB_PUSH_ENABLED: bool = True
+    VAPID_PUBLIC_KEY: Optional[str] = "BCo18wf1RGpeXAmItEw2vjvHGeT09MOzsTD4xN0iD6D8bt6jk3CwWvSv7yVNKr14TkwljYpK5Usrqu1opS0mUQw"
+    VAPID_PRIVATE_KEY: Optional[str] = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgk73HvjnRn5q6WmUX\nkAh6WWpAGsqyCh5ffJ0rTGfiDYehRANCAAQqNfMH9URqXlwJiLRMNr47xxnk9PTD\ns7Ew+MTdIg+g/G7eo5NwsFr0r+8lTSq9eE5MJY2KSuVLK6rtaKUtJlEM\n-----END PRIVATE KEY-----\n"
     VAPID_CLAIMS_EMAIL: str = "mailto:emergency-alerts@resilience-civildefense.org"
     
     # Real Weather Intelligence Provider

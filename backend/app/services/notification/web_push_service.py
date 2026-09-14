@@ -124,7 +124,12 @@ class WebPushService:
         fingerprint = PushSubscriptionRecord.compute_fingerprint(sub_in.endpoint, sub_in.keys.p256dh)
         now_utc = datetime.now(timezone.utc)
 
-        existing = await db["push_subscriptions"].find_one({"subscription_fingerprint": fingerprint})
+        existing = await db["push_subscriptions"].find_one({
+            "$or": [
+                {"subscription_fingerprint": fingerprint},
+                {"endpoint": sub_in.endpoint},
+            ]
+        })
 
         if existing:
             update_fields: Dict[str, Any] = {
@@ -133,6 +138,7 @@ class WebPushService:
                 "last_seen_at": now_utc,
                 "p256dh": sub_in.keys.p256dh,
                 "auth": sub_in.keys.auth,
+                "subscription_fingerprint": fingerprint,
             }
             if sub_in.user_agent:
                 update_fields["user_agent"] = sub_in.user_agent
@@ -204,6 +210,8 @@ class WebPushService:
     ) -> bool:
         """
         Sends an RFC 8291 encrypted Web Push notification to a subscribed client browser.
+        Accurately differentiates 201 Created, 401 VAPID Auth, 404/410 Expired, 400 Bad Request,
+        429 Rate Limited, 5xx Provider Error, and Network/Timeout.
         """
         cls._init_vapid_keys()
         private_key = cls.get_private_vapid_key()
@@ -220,8 +228,12 @@ class WebPushService:
         }
 
         now_utc = datetime.now(timezone.utc)
+        sub_claim = (settings.VAPID_CLAIMS_EMAIL or "mailto:emergency-alerts@resilience-civildefense.org").strip()
+        if "@" in sub_claim and not sub_claim.startswith("mailto:") and not sub_claim.startswith("http"):
+            sub_claim = f"mailto:{sub_claim}"
+
         claims = {
-            "sub": settings.VAPID_CLAIMS_EMAIL,
+            "sub": sub_claim,
         }
 
         vapid_target = cls.get_vapid_instance() or private_key
@@ -237,7 +249,15 @@ class WebPushService:
             if db is not None:
                 await db["push_subscriptions"].update_one(
                     {"subscription_id": subscription.subscription_id},
-                    {"$set": {"last_success_at": now_utc, "last_seen_at": now_utc}},
+                    {
+                        "$set": {
+                            "last_success_at": now_utc,
+                            "last_seen_at": now_utc,
+                            "last_provider_status": "ACCEPTED_201",
+                            "last_delivery_status": "DELIVERED",
+                            "failure_reason": None,
+                        }
+                    },
                 )
             return True
 
@@ -245,9 +265,29 @@ class WebPushService:
             logger.warning(f"Web push delivery failed for {subscription.subscription_id}: {ex}")
             status_code = getattr(getattr(ex, "response", None), "status_code", None)
             new_status = subscription.status
+
             if status_code in [404, 410]:
-                # Subscription expired or invalid
+                # 404 / 410 Subscription Expired or Gone
                 new_status = PushSubscriptionStatus.EXPIRED
+                provider_status = f"{status_code}_SUBSCRIPTION_EXPIRED"
+            elif status_code == 403:
+                # 403 VAPID Key Mismatch / Forbidden - Mark expired so client resubscribes with current VAPID key
+                new_status = PushSubscriptionStatus.EXPIRED
+                provider_status = "403_VAPID_KEY_MISMATCH"
+            elif status_code == 401:
+                # 401 VAPID Authentication Error
+                provider_status = "401_VAPID_AUTH_ERROR"
+            elif status_code == 400:
+                # 400 Invalid Subscription / Bad Request
+                provider_status = "400_INVALID_SUBSCRIPTION"
+            elif status_code == 429:
+                # 429 Rate Limited (Transient)
+                provider_status = "429_RATE_LIMITED"
+            elif status_code and 500 <= status_code <= 599:
+                # 5xx Provider Server Error (Transient)
+                provider_status = f"{status_code}_PROVIDER_ERROR"
+            else:
+                provider_status = f"{status_code or 'UNKNOWN'}_PUSH_ERROR"
 
             if db is not None:
                 await db["push_subscriptions"].update_one(
@@ -256,6 +296,8 @@ class WebPushService:
                         "$set": {
                             "status": new_status.value,
                             "last_failure_at": now_utc,
+                            "last_provider_status": provider_status,
+                            "last_delivery_status": "FAILED",
                             "failure_reason": str(ex),
                         }
                     },
@@ -269,6 +311,8 @@ class WebPushService:
                     {
                         "$set": {
                             "last_failure_at": now_utc,
+                            "last_provider_status": "NETWORK_OR_INTERNAL_ERROR",
+                            "last_delivery_status": "FAILED",
                             "failure_reason": str(e),
                         }
                     },
@@ -387,10 +431,204 @@ class WebPushService:
                     guidance_version=guidance.version,
                     delivered_at=datetime.now(timezone.utc),
                     status="DELIVERED",
+                    provider_status="ACCEPTED_201",
                 )
                 await db["push_deliveries"].insert_one(delivery_record.model_dump())
 
         return sent_count
+
+    @classmethod
+    async def notify_citizen_report_status_update(
+        cls,
+        report_id: str,
+        notification_type: SafetyNotificationType,
+        title: str,
+        body: str,
+        event_id: Optional[str] = None,
+        data: Optional[Dict[str, Any]] = None,
+        db: Optional[AsyncIOMotorDatabase] = None,
+    ) -> Dict[str, Any]:
+        """
+        Notifies active browser subscriptions specifically linked to a citizen report_id.
+        Accurately differentiates NO_SUBSCRIPTION, DELIVERED, FAILED, and EXPIRED.
+        Never throws unhandled exceptions that could roll back upstream database mutations.
+        """
+        if db is None:
+            db = db_manager.db
+        if db is None:
+            return {"status": "NO_SUBSCRIPTION", "subscribers_notified": 0, "details": "Database not initialized"}
+
+        clean_id = report_id.strip().upper()
+
+        # Check active subscriptions for this report
+        cursor = db["push_subscriptions"].find({
+            "report_ids": clean_id,
+            "status": PushSubscriptionStatus.ACTIVE.value,
+        })
+        subscriptions = await cursor.to_list(length=20)
+
+        if not subscriptions:
+            # Also check if any active subscription has the report_id without uppercase formatting
+            cursor_fallback = db["push_subscriptions"].find({
+                "report_ids": report_id.strip(),
+                "status": PushSubscriptionStatus.ACTIVE.value,
+            })
+            subscriptions = await cursor_fallback.to_list(length=20)
+
+        if not subscriptions:
+            logger.info(f"No active push subscription found for report {clean_id}. Rejection/status update proceeds.")
+            return {
+                "status": "NO_SUBSCRIPTION",
+                "subscribers_notified": 0,
+                "provider_status": "NO_ACTIVE_SUBSCRIPTION",
+                "details": f"No active browser push subscription linked to report '{clean_id}'."
+            }
+
+        # Check if report has safety guidance token for url
+        report_doc = await db["citizen_reports"].find_one({"report_id": clean_id})
+        url = "/"
+        if report_doc:
+            if report_doc.get("safety_guidance_token"):
+                url = f"/safety-guidance/{report_doc['safety_guidance_token']}"
+            elif report_doc.get("safety_guidance_id"):
+                guidance_doc = await db["citizen_safety_guidance"].find_one({"guidance_id": report_doc["safety_guidance_id"]})
+                if guidance_doc and guidance_doc.get("secure_access_token"):
+                    url = f"/safety-guidance/{guidance_doc['secure_access_token']}"
+
+        resolved_event_id = event_id or f"EVT-PUSH-{clean_id}-{notification_type.value}"
+
+        payload_data = {
+            "report_id": clean_id,
+            "notification_type": notification_type.value,
+            **(data or {})
+        }
+
+        payload = PushNotificationPayload(
+            title=title,
+            body=body,
+            icon="/favicon.svg",
+            badge="/favicon.svg",
+            url=url,
+            notification_type=notification_type,
+            data=payload_data,
+        )
+
+        sent_count = 0
+        last_provider_status = None
+        has_failed = False
+
+        for sub_doc in subscriptions:
+            record = cls._doc_to_record(sub_doc)
+
+            # Idempotency check: event_id + endpoint + notification_type
+            idempotency_raw = f"{resolved_event_id}:{record.endpoint}:{notification_type.value}"
+            idempotency_key = hashlib.sha256(idempotency_raw.encode("utf-8")).hexdigest()
+
+            existing_delivery = await db["push_deliveries"].find_one({"idempotency_key": idempotency_key})
+            if existing_delivery:
+                logger.info(f"Skipping duplicate push delivery for {clean_id} (Idempotency key: {idempotency_key[:12]}...)")
+                sent_count += 1
+                last_provider_status = existing_delivery.get("provider_status", "ACCEPTED_201")
+                continue
+
+            try:
+                success = await cls.send_web_push(record, payload, db=db)
+                if success:
+                    sent_count += 1
+                    last_provider_status = "ACCEPTED_201"
+                    delivery_record = PushDeliveryRecord(
+                        delivery_id=f"DLV-{uuid.uuid4().hex[:10].upper()}",
+                        idempotency_key=idempotency_key,
+                        event_id=resolved_event_id,
+                        recipient_endpoint=record.endpoint,
+                        notification_type=notification_type,
+                        report_id=clean_id,
+                        guidance_version=1,
+                        delivered_at=datetime.now(timezone.utc),
+                        status="DELIVERED",
+                        provider_status="ACCEPTED_201",
+                    )
+                    await db["push_deliveries"].insert_one(delivery_record.model_dump())
+                else:
+                    has_failed = True
+                    # Re-fetch sub to see provider status
+                    sub_refresh = await db["push_subscriptions"].find_one({"subscription_id": record.subscription_id})
+                    last_provider_status = (sub_refresh or {}).get("last_provider_status", "PROVIDER_FAILED")
+            except Exception as push_err:
+                logger.warning(f"Error during push notification send for {clean_id}: {push_err}")
+                has_failed = True
+                last_provider_status = "NETWORK_OR_INTERNAL_ERROR"
+
+        if sent_count > 0:
+            return {
+                "status": "DELIVERED",
+                "subscribers_notified": sent_count,
+                "provider_status": last_provider_status or "ACCEPTED_201",
+                "details": f"Web push notification delivered to {sent_count} active subscriber(s)."
+            }
+        else:
+            return {
+                "status": "FAILED" if has_failed else "NO_SUBSCRIPTION",
+                "subscribers_notified": 0,
+                "provider_status": last_provider_status or "DELIVERY_FAILED",
+                "details": "Push delivery attempt was not accepted by the push service provider."
+            }
+
+    @classmethod
+    async def get_diagnostic_status(
+        cls,
+        db: Optional[AsyncIOMotorDatabase] = None,
+    ) -> Dict[str, Any]:
+        """
+        Returns truthful diagnostic status of the Web Push engine.
+        Never exposes VAPID private keys or auth secrets.
+        """
+        cls._init_vapid_keys()
+        pub_key = cls.get_public_vapid_key()
+        has_priv_key = bool(cls.get_private_vapid_key())
+        enabled = bool(settings.WEB_PUSH_ENABLED and pub_key and has_priv_key)
+
+        if db is None:
+            db = db_manager.db
+
+        active_count = 0
+        total_count = 0
+        last_delivery_status = "NONE"
+        last_provider_status = "NOT_INITIALIZED"
+        last_error = None
+
+        if db is not None:
+            active_count = await db["push_subscriptions"].count_documents({"status": "ACTIVE"})
+            total_count = await db["push_subscriptions"].count_documents({})
+
+            latest_delivery = await db["push_deliveries"].find_one(
+                {},
+                sort=[("delivered_at", -1)],
+            )
+            if latest_delivery:
+                last_delivery_status = latest_delivery.get("status", "DELIVERED")
+                last_provider_status = latest_delivery.get("provider_status", "ACCEPTED_201")
+
+            latest_failed_sub = await db["push_subscriptions"].find_one(
+                {"last_failure_at": {"$ne": None}},
+                sort=[("last_failure_at", -1)],
+            )
+            if latest_failed_sub:
+                last_error = latest_failed_sub.get("failure_reason")
+                if not latest_delivery or (latest_failed_sub.get("last_failure_at") and latest_delivery.get("delivered_at") and latest_failed_sub["last_failure_at"] > latest_delivery["delivered_at"]):
+                    last_delivery_status = "FAILED"
+                    last_provider_status = latest_failed_sub.get("last_provider_status", "PROVIDER_ERROR")
+
+        return {
+            "enabled": enabled,
+            "secure_context_required": True,
+            "subscription_registered": active_count > 0,
+            "subscription_persisted": total_count > 0,
+            "active_subscriptions": active_count,
+            "last_delivery_status": last_delivery_status,
+            "last_provider_status": last_provider_status,
+            "last_error": last_error,
+        }
 
     @staticmethod
     def _doc_to_record(doc: Dict[str, Any]) -> PushSubscriptionRecord:
@@ -416,6 +654,7 @@ class WebPushService:
             last_seen_at=doc.get("last_seen_at", datetime.now(timezone.utc)),
             last_success_at=doc.get("last_success_at"),
             last_failure_at=doc.get("last_failure_at"),
+            last_provider_status=doc.get("last_provider_status"),
             failure_reason=doc.get("failure_reason"),
             report_ids=doc.get("report_ids", []),
             session_ids=doc.get("session_ids", []),

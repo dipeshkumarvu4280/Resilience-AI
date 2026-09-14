@@ -29,6 +29,7 @@ import {
   Building2,
   Radio,
   TrendingDown,
+  XCircle,
 } from 'lucide-react';
 import { X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -125,6 +126,7 @@ export const CommandSidebar: React.FC<CommandSidebarProps> = ({
           { id: 'command-center', label: 'Command Center', icon: LayoutDashboard, iconColor: 'text-red-500', activeColor: 'text-red-600', hoverBg: 'hover:bg-red-50/50' },
           { id: 'incidents', label: 'Active Incidents', icon: AlertTriangle, iconColor: 'text-amber-500', activeColor: 'text-amber-600', hoverBg: 'hover:bg-amber-50/50' },
           { id: 'reports', label: 'Incident Reports', icon: FileText, iconColor: 'text-blue-500', activeColor: 'text-blue-600', hoverBg: 'hover:bg-blue-50/50' },
+          { id: 'rejected-history', label: 'Rejected History', icon: XCircle, iconColor: 'text-rose-500', activeColor: 'text-rose-600', hoverBg: 'hover:bg-rose-50/50' },
           { id: 'live-map', label: 'Live GIS Map', icon: Map, iconColor: 'text-emerald-500', activeColor: 'text-emerald-600', hoverBg: 'hover:bg-emerald-50/50' },
           { id: 'resources', label: 'Resource Coordination', icon: Truck, iconColor: 'text-teal-500', activeColor: 'text-teal-600', hoverBg: 'hover:bg-teal-50/50' },
           { id: 'shelters', label: 'Shelter Facilities', icon: Home, iconColor: 'text-indigo-500', activeColor: 'text-indigo-600', hoverBg: 'hover:bg-indigo-50/50' },

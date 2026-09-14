@@ -56,10 +56,10 @@ class MapService:
         sit_index = 1
         async for doc in situations_cursor:
             sit_obj = parse_situation_doc(doc)
-            # Count only active (non-resolved) reports in this situation
+            # Count only active (non-resolved, non-rejected) reports in this situation
             active_rep_count = await db["citizen_reports"].count_documents({
                 "report_id": {"$in": sit_obj.report_ids},
-                "status": {"$ne": ReportStatus.RESOLVED.value}
+                "status": {"$nin": [ReportStatus.RESOLVED.value, ReportStatus.REJECTED.value]}
             })
             if active_rep_count == 0:
                 await db["situations"].update_one(
@@ -97,7 +97,7 @@ class MapService:
 
         # 2. Fetch Standalone Active Reports not clustered into above situations
         reports_cursor = db["citizen_reports"].find({
-            "status": {"$ne": ReportStatus.RESOLVED.value}
+            "status": {"$nin": [ReportStatus.RESOLVED.value, ReportStatus.REJECTED.value]}
         }).sort("created_at", -1).limit(100)
 
         async for r_doc in reports_cursor:
@@ -186,9 +186,9 @@ class MapService:
         # 2. Build Report Queries
         rep_query: Dict[str, Any] = {}
         if clean_mode == "active":
-            rep_query["status"] = {"$ne": ReportStatus.RESOLVED.value}
+            rep_query["status"] = {"$nin": [ReportStatus.RESOLVED.value, ReportStatus.REJECTED.value]}
         elif clean_mode == "history":
-            rep_query["status"] = ReportStatus.RESOLVED.value
+            rep_query["status"] = {"$in": [ReportStatus.RESOLVED.value, ReportStatus.REJECTED.value]}
 
         if emergency_type:
             rep_query["emergency_type"] = emergency_type.value
@@ -196,8 +196,8 @@ class MapService:
         # Counts
         total_active_situations = await db["situations"].count_documents({"status": {"$nin": RESOLVED_SITUATION_STATUSES}})
         total_resolved_situations = await db["situations"].count_documents({"status": {"$in": RESOLVED_SITUATION_STATUSES}})
-        total_active_reports = await db["citizen_reports"].count_documents({"status": {"$ne": ReportStatus.RESOLVED.value}})
-        total_resolved_reports = await db["citizen_reports"].count_documents({"status": ReportStatus.RESOLVED.value})
+        total_active_reports = await db["citizen_reports"].count_documents({"status": {"$nin": [ReportStatus.RESOLVED.value, ReportStatus.REJECTED.value]}})
+        total_resolved_reports = await db["citizen_reports"].count_documents({"status": {"$in": [ReportStatus.RESOLVED.value, ReportStatus.REJECTED.value]}})
 
         # Fetch Situations
         situations_cursor = db["situations"].find(sit_query).sort("updated_at", -1).limit(100)
@@ -207,7 +207,7 @@ class MapService:
             if clean_mode == "active":
                 act_cnt = await db["citizen_reports"].count_documents({
                     "report_id": {"$in": sit_obj.report_ids},
-                    "status": {"$ne": ReportStatus.RESOLVED.value}
+                    "status": {"$nin": [ReportStatus.RESOLVED.value, ReportStatus.REJECTED.value]}
                 })
                 if act_cnt == 0:
                     continue

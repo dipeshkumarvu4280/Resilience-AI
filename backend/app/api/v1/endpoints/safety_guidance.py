@@ -39,6 +39,17 @@ async def get_vapid_public_key():
     }
 
 
+@router.get("/push/status")
+async def get_citizen_push_status(
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """
+    Read-only diagnostic endpoint reporting truthful Web Push subsystem status.
+    Never exposes VAPID private keys, auth secrets, or credentials.
+    """
+    return await WebPushService.get_diagnostic_status(db=db)
+
+
 @router.post("/push/subscribe")
 async def subscribe_web_push(
     sub_in: PushSubscriptionCreate,
@@ -123,33 +134,44 @@ async def send_test_web_push(
     if not subscriptions:
         return {
             "success": False,
-            "message": "No active push subscriptions found.",
+            "request_status": "no_subscriptions_for_target",
+            "subscriptions_found": 0,
+            "total_targets": 0,
             "sent_count": 0,
+            "web_push_attempted": False,
+            "provider_status": None,
+            "delivery_status": "NO_SUBSCRIPTIONS",
+            "message": f"No active push subscriptions found{' for report ' + report_id if report_id else ''}.",
+            "failed_details": [],
         }
 
     from app.models.safety_guidance import PushNotificationPayload
     payload = PushNotificationPayload(
         title="🚨 RESILIENCE Emergency Alert",
         body="Live emergency alert channel is verified and active on this device.",
-        url="/citizen/report",
+        url=f"/safety-guidance/{report_id}" if report_id else "/citizen/report",
         tag=f"alert-{int(datetime.now(timezone.utc).timestamp())}",
     )
 
     sent = 0
     failed_details = []
+    last_provider_status = None
     for doc in subscriptions:
         record = WebPushService._doc_to_record(doc)
         ok = await WebPushService.send_web_push(record, payload, db=db)
+        updated_sub = await db["push_subscriptions"].find_one({"subscription_id": record.subscription_id})
+        last_provider_status = (updated_sub or {}).get("last_provider_status")
         if ok:
             sent += 1
         else:
-            updated_sub = await db["push_subscriptions"].find_one({"subscription_id": record.subscription_id})
             failed_details.append({
                 "subscription_id": record.subscription_id,
+                "provider_status": last_provider_status,
                 "reason": (updated_sub or {}).get("failure_reason") or "Delivery rejected or expired",
             })
 
     is_success = (sent > 0)
+    delivery_status = "ACCEPTED_201" if is_success else "FAILED"
     msg = (
         f"Dispatched {sent}/{len(subscriptions)} real Web Push notifications."
         if is_success
@@ -158,8 +180,13 @@ async def send_test_web_push(
 
     return {
         "success": is_success,
-        "sent_count": sent,
+        "request_status": "accepted" if is_success else "failed",
+        "subscriptions_found": len(subscriptions),
         "total_targets": len(subscriptions),
+        "sent_count": sent,
+        "web_push_attempted": True,
+        "provider_status": last_provider_status or ("ACCEPTED_201" if is_success else "PROVIDER_ERROR"),
+        "delivery_status": delivery_status,
         "message": msg,
         "failed_details": failed_details,
     }

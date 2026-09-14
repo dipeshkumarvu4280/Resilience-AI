@@ -36,6 +36,10 @@ from app.models.officer import (
     TimelineEvent,
     ReportPriorityUpdateRequest,
     ReportStatusUpdateRequest,
+    ReportRejectionMetadata,
+    ReportRejectRequest,
+    ReportRejectNotificationInfo,
+    ReportRejectResponse,
     OfficerNoteCreateRequest,
     OfficerReportStatsResponse,
     OfficerReportDetailResponse,
@@ -259,6 +263,20 @@ def parse_report_document(doc: Optional[dict], corroboration: Optional[Corrobora
             "uncertainties": uncertainties,
         }
 
+    rejection_doc = doc.get("rejection")
+    rejection_meta = None
+    if isinstance(rejection_doc, dict):
+        try:
+            rejection_meta = ReportRejectionMetadata(
+                reason=rejection_doc.get("reason", ""),
+                rejected_by_user_id=str(rejection_doc.get("rejected_by_user_id", "")),
+                rejected_by_name=rejection_doc.get("rejected_by_name", ""),
+                rejected_at=ensure_utc(rejection_doc.get("rejected_at")) or datetime.now(timezone.utc),
+                role=rejection_doc.get("role", "EMERGENCY_OFFICER"),
+            )
+        except Exception:
+            pass
+
     return OfficerReportDetailResponse(
         report_id=doc.get("report_id", "UNKNOWN"),
         citizen_id=doc.get("citizen_id", "CIT-ANON"),
@@ -285,6 +303,10 @@ def parse_report_document(doc: Optional[dict], corroboration: Optional[Corrobora
         trust_signals=doc.get("trust_signals", []),
         acknowledged_at=ensure_utc(doc.get("acknowledged_at")),
         acknowledged_by=doc.get("acknowledged_by"),
+        rejected_at=ensure_utc(doc.get("rejected_at")),
+        rejected_by=doc.get("rejected_by"),
+        rejection_reason=doc.get("rejection_reason") or (rejection_meta.reason if rejection_meta else None),
+        rejection=rejection_meta,
         situation_id=doc.get("situation_id"),
         notes=notes_list,
         timeline=timeline_list,
@@ -308,6 +330,7 @@ async def get_officer_report_stats(
     under_assessment = await db["citizen_reports"].count_documents({"status": ReportStatus.UNDER_ASSESSMENT.value})
     action_required = await db["citizen_reports"].count_documents({"status": ReportStatus.ACTION_REQUIRED.value})
     resolved = await db["citizen_reports"].count_documents({"status": ReportStatus.RESOLVED.value})
+    rejected = await db["citizen_reports"].count_documents({"status": ReportStatus.REJECTED.value})
     total_reports = await db["citizen_reports"].count_documents({})
 
     return OfficerReportStatsResponse(
@@ -316,6 +339,7 @@ async def get_officer_report_stats(
         under_assessment=under_assessment,
         action_required=action_required,
         resolved=resolved,
+        rejected=rejected,
         total_reports=total_reports,
     )
 
@@ -579,7 +603,234 @@ async def acknowledge_report(
     except Exception as notif_err:
         logger.warning(f"Notification dispatch notice for report acknowledgement {clean_id}: {notif_err}")
 
+    # Section 13: Web Push Notification for Report Acceptance/Acknowledgement
+    try:
+        from app.services.notification.web_push_service import WebPushService
+        from app.models.enums import SafetyNotificationType
+        await WebPushService.notify_citizen_report_status_update(
+            report_id=clean_id,
+            notification_type=SafetyNotificationType.REPORT_ACCEPTED,
+            title="Emergency Report Update",
+            body=f"Your emergency report {clean_id} has been reviewed and accepted.",
+            event_id=f"EVT-ACK-PUSH-{clean_id}",
+            db=db,
+        )
+    except Exception as push_err:
+        logger.warning(f"Web push dispatch notice for report acknowledgement {clean_id}: {push_err}")
+
     return parse_report_document(updated_doc)
+
+
+@router.post("/reports/{report_id}/reject", response_model=ReportRejectResponse)
+async def reject_report(
+    report_id: str,
+    payload: ReportRejectRequest,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: UserResponse = Depends(require_officer),
+):
+    """
+    Officer rejects an incoming emergency report with a mandatory descriptive reason.
+    Removes the report from active operational workflow and Situation Intelligence,
+    records an authoritative audit event, updates GIS status, and dispatches Web Push
+    notification to the reporting citizen without failing on push network errors.
+    """
+    clean_id = report_id.strip().upper()
+    doc = await db["citizen_reports"].find_one({"report_id": clean_id})
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Emergency report '{report_id}' not found in registry.",
+        )
+
+    # Validate rejection reason
+    try:
+        cleaned_reason = ReportRejectRequest.validate_reason(payload.reason)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(ve),
+        )
+
+    current_status = ReportStatus(doc.get("status", ReportStatus.RECEIVED.value))
+
+    # Idempotency check: if report is already REJECTED
+    if current_status == ReportStatus.REJECTED:
+        rejection_meta_doc = doc.get("rejection") or {
+            "reason": doc.get("rejection_reason") or cleaned_reason,
+            "rejected_by_user_id": doc.get("rejected_by_id") or current_user.id,
+            "rejected_by_name": doc.get("rejected_by") or current_user.full_name,
+            "rejected_at": doc.get("rejected_at") or doc.get("updated_at") or datetime.now(timezone.utc),
+            "role": "EMERGENCY_OFFICER",
+        }
+        rejection_meta = ReportRejectionMetadata(
+            reason=rejection_meta_doc.get("reason", cleaned_reason),
+            rejected_by_user_id=str(rejection_meta_doc.get("rejected_by_user_id", current_user.id)),
+            rejected_by_name=rejection_meta_doc.get("rejected_by_name", current_user.full_name),
+            rejected_at=ensure_utc(rejection_meta_doc.get("rejected_at")) or datetime.now(timezone.utc),
+            role=rejection_meta_doc.get("role", "EMERGENCY_OFFICER"),
+        )
+        return ReportRejectResponse(
+            success=True,
+            report_id=clean_id,
+            status=ReportStatus.REJECTED,
+            rejection_reason=rejection_meta.reason,
+            rejection=rejection_meta,
+            notification=ReportRejectNotificationInfo(
+                status="NO_SUBSCRIPTION",
+                details="Report was already rejected. State is canonical and idempotent."
+            ),
+            report=parse_report_document(doc),
+        )
+
+    # Check if report is in a terminal resolved state
+    if current_status == ReportStatus.RESOLVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot reject report '{clean_id}' because it has already reached terminal status 'RESOLVED'.",
+        )
+
+    now = datetime.now(timezone.utc)
+    new_status = ReportStatus.REJECTED
+
+    rejection_metadata = {
+        "reason": cleaned_reason,
+        "rejected_by_user_id": current_user.id,
+        "rejected_by_name": current_user.full_name,
+        "rejected_at": now,
+        "role": current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+    }
+
+    # Atomically persist rejection in MongoDB
+    await db["citizen_reports"].update_one(
+        {"report_id": clean_id},
+        {
+            "$set": {
+                "status": new_status.value,
+                "rejection": rejection_metadata,
+                "rejection_reason": cleaned_reason,
+                "rejected_at": now,
+                "rejected_by": current_user.full_name,
+                "rejected_by_id": current_user.id,
+                "rejected_by_user_id": current_user.id,
+                "updated_at": now,
+            }
+        }
+    )
+
+    # Record authoritative timeline & audit event
+    await record_timeline_event(
+        db=db,
+        report_id=clean_id,
+        event_type=TimelineEventType.REPORT_REJECTED,
+        details=f"Report rejected by Officer {current_user.full_name}. Reason: {cleaned_reason}",
+        actor_id=current_user.id,
+        actor_name=current_user.full_name,
+        actor_role=current_user.role,
+        previous_value=current_status.value,
+        new_value=new_status.value,
+        metadata={"rejection": rejection_metadata, "reason": cleaned_reason},
+    )
+
+    # If report was linked to a situation cluster, refresh cluster ground truth & severity
+    sit_id = doc.get("situation_id")
+    if sit_id:
+        try:
+            from app.services.incident_fusion import refresh_situation_cluster
+            await refresh_situation_cluster(db, sit_id)
+        except Exception as e:
+            logger.warning(f"Could not refresh situation {sit_id} on report rejection {clean_id}: {e}")
+
+    # Dispatch Phase 6 Monitoring Event
+    try:
+        await MonitoringService.record_change_event(
+            event_type=MonitoringEventType.REPORT_REJECTED,
+            source_type=EventSourceType.CITIZEN_REPORT,
+            source_id=clean_id,
+            previous_state={"status": current_status.value},
+            new_state={"status": new_status.value, "reason": cleaned_reason},
+            situation_id=sit_id,
+            location=doc.get("location"),
+            actor={
+                "id": current_user.id,
+                "full_name": current_user.full_name,
+                "role": current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+            },
+            db=db,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record monitoring event for report rejection {clean_id}: {e}")
+
+    # Phase 7: Event-Driven Notification Dispatch to Officers
+    try:
+        from app.services.notification import get_notification_service
+        from app.models.enums import NotificationCategory, NotificationSeverity, UserRole
+
+        notif_service = get_notification_service()
+        await notif_service.dispatch_event(
+            category=NotificationCategory.CITIZEN_REPORT,
+            event_type="REPORT_REJECTED",
+            severity=NotificationSeverity.LOW,
+            title=f"Emergency Report Rejected: {clean_id}",
+            message=f"Report rejected by Officer {current_user.full_name}. Reason: {cleaned_reason}",
+            entity_type="CITIZEN_REPORT",
+            entity_id=clean_id,
+            situation_id=sit_id,
+            view_hint="reports",
+            target_roles=[UserRole.EMERGENCY_OFFICER, UserRole.ADMIN],
+            material_state={"report_id": clean_id, "status": new_status.value},
+            metadata={"report_id": clean_id, "rejection_reason": cleaned_reason, "rejected_by": current_user.full_name},
+        )
+    except Exception as notif_err:
+        logger.warning(f"Notification dispatch notice for report rejection {clean_id}: {notif_err}")
+
+    # Section 10 & 11: Real Web Push Notification to Reporting Citizen
+    push_result = {"status": "NO_SUBSCRIPTION", "subscribers_notified": 0, "details": "No subscription check run"}
+    try:
+        from app.services.notification.web_push_service import WebPushService
+        from app.models.enums import SafetyNotificationType
+        push_result = await WebPushService.notify_citizen_report_status_update(
+            report_id=clean_id,
+            notification_type=SafetyNotificationType.REPORT_REJECTED,
+            title="Emergency Report Update",
+            body=f"Your emergency report {clean_id} has been reviewed and rejected.",
+            event_id=f"EVT-REJ-PUSH-{clean_id}",
+            data={"rejection_reason": cleaned_reason},
+            db=db,
+        )
+    except Exception as push_err:
+        logger.warning(f"Web push dispatch notice for report rejection {clean_id}: {push_err}")
+        push_result = {
+            "status": "FAILED",
+            "subscribers_notified": 0,
+            "details": f"Push notification service encountered an error: {push_err}"
+        }
+
+    updated_doc = await db["citizen_reports"].find_one({"report_id": clean_id})
+    rejection_meta_obj = ReportRejectionMetadata(
+        reason=cleaned_reason,
+        rejected_by_user_id=current_user.id,
+        rejected_by_name=current_user.full_name,
+        rejected_at=now,
+        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+    )
+
+    parsed_report = parse_report_document(updated_doc)
+
+    return ReportRejectResponse(
+        success=True,
+        report_id=clean_id,
+        status=ReportStatus.REJECTED,
+        rejection_reason=cleaned_reason,
+        rejection=rejection_meta_obj,
+        notification=ReportRejectNotificationInfo(
+            status=push_result.get("status", "NO_SUBSCRIPTION"),
+            notification_type="REPORT_REJECTED",
+            provider_status=push_result.get("provider_status"),
+            subscribers_notified=push_result.get("subscribers_notified", 0),
+            details=push_result.get("details"),
+        ),
+        report=parsed_report,
+    )
 
 
 @router.patch("/reports/{report_id}/priority", response_model=OfficerReportDetailResponse)

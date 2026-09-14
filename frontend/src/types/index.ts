@@ -137,6 +137,7 @@ export type ReportStatus =
   | 'UNDER_ASSESSMENT'
   | 'ACTION_REQUIRED'
   | 'RESOLVED'
+  | 'REJECTED'
   | 'VERIFIED'
   | 'IN_PROGRESS';
 
@@ -151,6 +152,7 @@ export type TimelineEventType =
   | 'REPORT_RECEIVED'
   | 'REPORT_VIEWED'
   | 'REPORT_ACKNOWLEDGED'
+  | 'REPORT_REJECTED'
   | 'PRIORITY_CHANGED'
   | 'STATUS_CHANGED'
   | 'NOTE_ADDED';
@@ -789,17 +791,51 @@ export interface TimelineEvent {
   timestamp: string;
 }
 
+export interface ReportRejectionMetadata {
+  reason: string;
+  rejected_by_user_id: string;
+  rejected_by_name: string;
+  rejected_at: string;
+  role: string;
+}
+
+export interface ReportRejectRequest {
+  reason: string;
+}
+
+export interface ReportRejectNotificationInfo {
+  status: string;
+  provider_status?: string | null;
+  subscribers_notified: number;
+  details?: string | null;
+}
+
+export interface ReportRejectResponse {
+  success: boolean;
+  report_id: string;
+  status: ReportStatus;
+  rejection_reason: string;
+  rejection?: ReportRejectionMetadata | null;
+  notification: ReportRejectNotificationInfo;
+  report?: OfficerReportDetailResponse | null;
+}
+
 export interface OfficerReportStatsResponse {
   total_incoming: number;
   acknowledged: number;
   under_assessment: number;
   action_required: number;
   resolved: number;
+  rejected: number;
   total_reports: number;
 }
 
 export interface OfficerReportDetailResponse extends EmergencyReportResponse {
   priority: ReportPriority;
+  rejected_at?: string | null;
+  rejected_by?: string | null;
+  rejection_reason?: string | null;
+  rejection?: ReportRejectionMetadata | null;
   notes: OfficerNote[];
   timeline: TimelineEvent[];
 }

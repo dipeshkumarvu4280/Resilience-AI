@@ -33,7 +33,7 @@ async def setup_db():
     test_db = db_manager.db
     if test_db is not None:
         # Clean transient test collections for strict test isolation
-        for col in ["citizen_reports", "dispatches", "timeline_events", "audit_logs", "situations", "monitoring_events"]:
+        for col in ["citizen_reports", "dispatches", "timeline_events", "audit_logs", "situations", "monitoring_events", "push_subscriptions", "push_deliveries"]:
             await test_db[col].delete_many({})
 
     # Set FastAPI dependency override to guarantee tests use resilience_test_db
@@ -81,6 +81,34 @@ async def setup_db():
                 "badge_number": "LOG-204",
                 "department_or_agency": "Emergency Logistics & Disaster Supply",
                 "hashed_password": get_password_hash("ResourcePassword@2026"),
+                "volunteer_profile": None,
+                "auth_provider": "local",
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "phone": "9999999004",
+                "full_name": "Test Volunteer",
+                "email": "volunteer@resilience.gov",
+                "role": UserRole.VOLUNTEER.value,
+                "is_active": True,
+                "badge_number": "VOL-101",
+                "department_or_agency": "Community Volunteer Corps",
+                "hashed_password": get_password_hash("VolunteerPassword@2026"),
+                "volunteer_profile": None,
+                "auth_provider": "local",
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "phone": "9999999005",
+                "full_name": "Test Citizen",
+                "email": "citizen@resilience.gov",
+                "role": UserRole.CITIZEN.value,
+                "is_active": True,
+                "badge_number": None,
+                "department_or_agency": None,
+                "hashed_password": get_password_hash("CitizenPassword@2026"),
                 "volunteer_profile": None,
                 "auth_provider": "local",
                 "created_at": now,

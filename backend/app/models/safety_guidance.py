@@ -53,6 +53,7 @@ class PushSubscriptionRecord(BaseModel):
     last_seen_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_success_at: Optional[datetime] = None
     last_failure_at: Optional[datetime] = None
+    last_provider_status: Optional[str] = None
     failure_reason: Optional[str] = None
     report_ids: List[str] = Field(default_factory=list)
     session_ids: List[str] = Field(default_factory=list)
@@ -70,9 +71,11 @@ class PushDeliveryRecord(BaseModel):
     event_id: str
     recipient_endpoint: str
     notification_type: SafetyNotificationType
-    guidance_version: int
+    guidance_version: int = 1
+    report_id: Optional[str] = None
     delivered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "DELIVERED"
+    provider_status: Optional[str] = "ACCEPTED_201"
 
 
 class VerifiedDestination(BaseModel):

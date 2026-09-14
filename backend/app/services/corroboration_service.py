@@ -15,6 +15,7 @@ from app.models.enums import (
     CorroborationTemporalRelationship,
     CorroborationAlignment,
     EvidenceConflictCategory,
+    ReportStatus,
 )
 from app.models.corroboration import (
     CorroboratingSource,
@@ -122,6 +123,24 @@ class EvidenceCorroborationService:
             now = now.replace(tzinfo=timezone.utc)
 
         target_id = target_report.get("report_id", "UNKNOWN")
+        if target_report.get("status") == ReportStatus.REJECTED.value:
+            return CorroborationResult(
+                target_id=target_id,
+                target_type="CITIZEN_REPORT",
+                corroboration_status=CorroborationStatus.NO_CORROBORATION,
+                total_sources_evaluated=0,
+                supporting_source_count=0,
+                conflicting_source_count=0,
+                neutral_source_count=0,
+                explanation="Report has been officially rejected by emergency operations. Excluded from active corroboration intelligence.",
+                corroborating_factors=[],
+                conflict_factors=["Report status is REJECTED."],
+                supporting_sources=[],
+                conflicting_sources=[],
+                neutral_sources=[],
+                conflict_details=[],
+                evaluated_at=eval_time or datetime.now(timezone.utc),
+            )
         raw_et = target_report.get("emergency_type") or "Other"
         try:
             target_et = EmergencyType(raw_et)
@@ -278,8 +297,8 @@ class EvidenceCorroborationService:
         # =====================================================================
         if candidate_reports:
             for rep in candidate_reports:
-                c_id = rep.get("report_id")
-                if not c_id or c_id == target_id:
+                c_id = rep.get("report_id", "UNKNOWN")
+                if c_id == target_id or rep.get("status") == ReportStatus.REJECTED.value:
                     continue
 
                 c_loc = rep.get("location") or {}
@@ -966,9 +985,12 @@ class EvidenceCorroborationService:
         if not target_doc:
             return None
 
-        # Fetch candidate peer citizen reports (within last 48 hours to be comprehensive)
+        # Fetch candidate peer citizen reports (excluding rejected reports and within last 48 hours)
         candidate_reports_cursor = db["citizen_reports"].find(
-            {"report_id": {"$ne": clean_id}}
+            {
+                "report_id": {"$ne": clean_id},
+                "status": {"$ne": ReportStatus.REJECTED.value},
+            }
         ).sort("created_at", -1).limit(100)
         candidate_reports = await candidate_reports_cursor.to_list(length=100)
 

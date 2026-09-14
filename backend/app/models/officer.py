@@ -49,6 +49,35 @@ class ReportStatusUpdateRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class ReportRejectionMetadata(BaseModel):
+    reason: str
+    rejected_by_user_id: str
+    rejected_by_name: str
+    rejected_at: datetime
+    role: str = "EMERGENCY_OFFICER"
+
+
+class ReportRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=2000, description="Mandatory descriptive reason for report rejection")
+
+    @classmethod
+    def validate_reason(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Rejection reason cannot be empty or whitespace only.")
+        cleaned = v.strip()
+        if len(cleaned) < 5:
+            raise ValueError("Rejection reason must be at least 5 characters long to be meaningful.")
+        return cleaned
+
+
+class ReportRejectNotificationInfo(BaseModel):
+    status: str
+    notification_type: Optional[str] = "REPORT_REJECTED"
+    provider_status: Optional[str] = None
+    subscribers_notified: int = 0
+    details: Optional[str] = None
+
+
 class OfficerNoteCreateRequest(BaseModel):
     note: str = Field(..., min_length=2, max_length=2000)
 
@@ -59,6 +88,7 @@ class OfficerReportStatsResponse(BaseModel):
     under_assessment: int = 0
     action_required: int = 0
     resolved: int = 0
+    rejected: int = 0
     total_reports: int = 0
 
 
@@ -93,12 +123,25 @@ class OfficerReportDetailResponse(BaseModel):
     trust_signals: List[str] = Field(default_factory=list)
     acknowledged_at: Optional[datetime] = None
     acknowledged_by: Optional[str] = None
+    rejected_at: Optional[datetime] = None
+    rejected_by: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    rejection: Optional[ReportRejectionMetadata] = None
     situation_id: Optional[str] = None
     notes: List[OfficerNote] = Field(default_factory=list)
     timeline: List[TimelineEvent] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
+
+class ReportRejectResponse(BaseModel):
+    success: bool = True
+    report_id: str
+    status: ReportStatus = ReportStatus.REJECTED
+    rejection_reason: str
+    rejection: Optional[ReportRejectionMetadata] = None
+    notification: ReportRejectNotificationInfo
+    report: Optional[OfficerReportDetailResponse] = None
 
 
 class PaginatedOfficerReportsResponse(BaseModel):
@@ -107,3 +150,4 @@ class PaginatedOfficerReportsResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+

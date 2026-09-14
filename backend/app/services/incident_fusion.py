@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.config import settings
-from app.models.enums import EmergencyType, SeverityLevel, SituationStatus, AssessmentStatus
+from app.models.enums import EmergencyType, SeverityLevel, SituationStatus, AssessmentStatus, ReportStatus
 from app.models.situation import (
     SituationCluster,
     SituationLocationCenter,
@@ -100,6 +100,9 @@ async def fuse_or_create_situation_for_report(
     or creates a new standalone SituationCluster for it.
     """
     report_id = report_doc["report_id"]
+    if report_doc.get("status") == ReportStatus.REJECTED.value:
+        logger.info(f"Report '{report_id}' is REJECTED. Excluded from Situation Intelligence candidate selection and fusion.")
+        return {}
     rep_type = report_doc.get("emergency_type", EmergencyType.OTHER.value)
     rep_loc = report_doc.get("location", {})
     rep_lat = rep_loc.get("latitude", 0.0)
@@ -155,8 +158,11 @@ async def fuse_or_create_situation_for_report(
         sit_id = matched_situation["situation_id"]
         updated_report_ids = list(set(matched_situation.get("report_ids", []) + [report_id]))
         
-        # Fetch all member reports to recalculate center, impact zone & severity
-        member_reports_cursor = db["citizen_reports"].find({"report_id": {"$in": updated_report_ids}})
+        # Fetch all active non-rejected member reports to recalculate center, impact zone & severity
+        member_reports_cursor = db["citizen_reports"].find({
+            "report_id": {"$in": updated_report_ids},
+            "status": {"$ne": ReportStatus.REJECTED.value}
+        })
         member_reports = await member_reports_cursor.to_list(length=100)
 
         center_lat, center_lon, impact_radius, bbox = calculate_cluster_centroid_and_radius(member_reports, matched_situation["emergency_type"])
@@ -366,11 +372,20 @@ async def refresh_situation_cluster(db: AsyncIOMotorDatabase, situation_id: str)
     if not report_ids:
         return situation
 
-    reports_cursor = db["citizen_reports"].find({"report_id": {"$in": report_ids}})
+    reports_cursor = db["citizen_reports"].find({
+        "report_id": {"$in": report_ids},
+        "status": {"$ne": ReportStatus.REJECTED.value}
+    })
     reports = await reports_cursor.to_list(length=100)
     if not reports:
-        return situation
+        now = datetime.now(timezone.utc)
+        await db["situations"].update_one(
+            {"situation_id": situation_id},
+            {"$set": {"report_count": 0, "status": SituationStatus.CONTAINED.value, "updated_at": now}}
+        )
+        return await db["situations"].find_one({"situation_id": situation_id})
 
+    active_report_ids = [r["report_id"] for r in reports]
     emergency_type = situation.get("emergency_type", EmergencyType.OTHER.value)
     center_lat, center_lon, impact_radius, bbox = calculate_cluster_centroid_and_radius(reports, emergency_type)
 
@@ -381,7 +396,7 @@ async def refresh_situation_cluster(db: AsyncIOMotorDatabase, situation_id: str)
     score, level, key_factors = calculate_explainable_severity(
         emergency_type=emergency_type,
         descriptions=descriptions,
-        report_count=len(report_ids),
+        report_count=len(active_report_ids),
         officer_priorities=priorities,
         media_count=media_count,
     )
@@ -419,7 +434,7 @@ async def sync_all_incident_clusters(db: AsyncIOMotorDatabase) -> int:
     Scans all reports in database and guarantees each is attached to a SituationCluster.
     Idempotent and safe. Returns count of synced situations.
     """
-    cursor = db["citizen_reports"].find({})
+    cursor = db["citizen_reports"].find({"status": {"$ne": ReportStatus.REJECTED.value}})
     reports = await cursor.to_list(length=1000)
     for rep in reports:
         await fuse_or_create_situation_for_report(db, rep)

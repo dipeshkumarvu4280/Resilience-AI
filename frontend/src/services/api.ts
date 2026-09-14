@@ -3,6 +3,7 @@ import type {
   OfficerReportStatsResponse,
   PaginatedOfficerReportsResponse,
   OfficerReportDetailResponse,
+  ReportRejectResponse,
   TimelineEvent,
   ReportPriority,
   ReportStatus,
@@ -221,6 +222,14 @@ export const getOfficerReportById = async (reportId: string): Promise<OfficerRep
 
 export const acknowledgeOfficerReport = async (reportId: string): Promise<OfficerReportDetailResponse> => {
   const response = await api.post<OfficerReportDetailResponse>(`/officer/reports/${reportId}/acknowledge`);
+  return response.data;
+};
+
+export const rejectOfficerReport = async (
+  reportId: string,
+  reason: string
+): Promise<ReportRejectResponse> => {
+  const response = await api.post<ReportRejectResponse>(`/officer/reports/${reportId}/reject`, { reason });
   return response.data;
 };
 

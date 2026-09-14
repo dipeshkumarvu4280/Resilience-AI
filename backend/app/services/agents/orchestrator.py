@@ -18,6 +18,7 @@ from app.models.enums import (
     ResourceStatus,
     TimelineEventType,
     UserRole,
+    ReportStatus,
 )
 from app.models.agent import (
     AgentContext,
@@ -311,7 +312,10 @@ class CentralOrchestrator:
             member_llm_extractions = []
             if member_report_ids:
                 rep_cursor = db["citizen_reports"].find(
-                    {"report_id": {"$in": member_report_ids}},
+                    {
+                        "report_id": {"$in": member_report_ids},
+                        "status": {"$ne": ReportStatus.REJECTED.value},
+                    },
                     {"visual_evidence": 1, "llm_extraction": 1, "evidence_verification": 1, "corroboration": 1}
                 )
                 rep_docs = await rep_cursor.to_list(length=100)

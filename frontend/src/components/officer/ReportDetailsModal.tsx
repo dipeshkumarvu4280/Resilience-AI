@@ -33,6 +33,7 @@ import type {
 import {
   getOfficerReportById,
   acknowledgeOfficerReport,
+  rejectOfficerReport,
   updateOfficerReportPriority,
   updateOfficerReportStatus,
   addOfficerNote,
@@ -79,6 +80,12 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
   // Notes state
   const [newNote, setNewNote] = useState('');
   const [submittingNote, setSubmittingNote] = useState(false);
+
+  // Rejection modal state
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionError, setRejectionError] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
 
   // Status transition reason
   const [statusReason, setStatusReason] = useState('');
@@ -345,6 +352,57 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
     }
   };
 
+  const handleRejectReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!report) return;
+    const trimmed = rejectionReason.trim();
+    if (!trimmed) {
+      setRejectionError('Reason for rejection is mandatory.');
+      return;
+    }
+    if (trimmed.length < 5) {
+      setRejectionError('Please provide a descriptive reason for rejection (at least 5 characters).');
+      return;
+    }
+
+    setRejecting(true);
+    setRejectionError(null);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const res = await rejectOfficerReport(report.report_id, trimmed);
+      if (res.report) {
+        setReport(res.report);
+      } else {
+        setReport((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: 'REJECTED' as ReportStatus,
+                rejection_reason: trimmed,
+                rejection: res.rejection,
+              }
+            : null
+        );
+      }
+      setShowRejectModal(false);
+      setRejectionReason('');
+      const pushNote =
+        res.notification?.status === 'DELIVERED'
+          ? ' Citizen notified via browser push.'
+          : res.notification?.status === 'NO_SUBSCRIPTION'
+          ? ' (No active citizen push subscription).'
+          : '';
+      setActionSuccess(`Emergency report ${report.report_id} has been rejected.${pushNote}`);
+      onReportUpdated?.();
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Failed to reject emergency report.';
+      setRejectionError(errorMsg);
+    } finally {
+      setRejecting(false);
+    }
+  };
+
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!report || !newNote.trim()) return;
@@ -478,6 +536,8 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
         return 'bg-purple-50 text-purple-800 border-purple-200';
       case 'RESOLVED':
         return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      case 'REJECTED':
+        return 'bg-rose-100 text-rose-800 border-rose-300 font-bold';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
@@ -657,6 +717,47 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
               {activeTab === 'incident' ? (
                 <>
                   {/* Top Operational Action Ribbon */}
+                  {report.status === 'REJECTED' && (
+                    <div className="p-4 rounded-2xl bg-rose-50/90 border-2 border-rose-200 text-rose-900 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2 font-bold text-sm text-rose-800">
+                          <ShieldAlert className="w-5 h-5 text-rose-600" />
+                          <span>OFFICIALLY REJECTED EMERGENCY REPORT</span>
+                        </div>
+                        <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-rose-200 text-rose-900 font-bold uppercase tracking-wider">
+                          NON-OPERATIONAL
+                        </span>
+                      </div>
+                      <p className="text-xs text-rose-700 leading-relaxed">
+                        This report has been reviewed and rejected by emergency operations. It is removed from active operational queues and excluded from Situation Intelligence candidate assessment and incident fusion.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                        <div className="bg-white/90 p-3 rounded-xl border border-rose-100 shadow-2xs">
+                          <span className="text-[10px] uppercase font-bold text-rose-600 block tracking-wider">REJECTION REASON</span>
+                          <span className="font-semibold text-slate-800 break-words mt-0.5 block">
+                            {report.rejection?.reason || report.rejection_reason || 'Administrative rejection.'}
+                          </span>
+                        </div>
+                        <div className="bg-white/90 p-3 rounded-xl border border-rose-100 shadow-2xs">
+                          <span className="text-[10px] uppercase font-bold text-rose-600 block tracking-wider">REJECTED BY</span>
+                          <span className="font-semibold text-slate-800 mt-0.5 block">
+                            {report.rejection?.rejected_by_name || report.rejected_by || 'Emergency Watch Officer'}
+                          </span>
+                        </div>
+                        <div className="bg-white/90 p-3 rounded-xl border border-rose-100 shadow-2xs">
+                          <span className="text-[10px] uppercase font-bold text-rose-600 block tracking-wider">REJECTED AT</span>
+                          <span className="font-mono text-slate-700 mt-0.5 block">
+                            {report.rejection?.rejected_at
+                              ? new Date(report.rejection.rejected_at).toLocaleString()
+                              : report.rejected_at
+                              ? new Date(report.rejected_at).toLocaleString()
+                              : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <div>
@@ -687,14 +788,16 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
                     </span>
                   </div>
 
-                  <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">OFFICER PRIORITY</div>
-                    <span className={`inline-block mt-0.5 px-3 py-1 rounded-lg border text-xs ${getPriorityBadgeClass(report.priority)}`}>
-                      {report.priority || 'UNASSESSED'}
-                    </span>
-                  </div>
+                  {report.status !== 'REJECTED' && (
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">OFFICER PRIORITY</div>
+                      <span className={`inline-block mt-0.5 px-3 py-1 rounded-lg border text-xs ${getPriorityBadgeClass(report.priority)}`}>
+                        {report.priority || 'UNASSESSED'}
+                      </span>
+                    </div>
+                  )}
 
-                  {report.acknowledged_at && (
+                  {report.acknowledged_at && report.status !== 'REJECTED' && (
                     <div>
                       <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">ACKNOWLEDGED BY</div>
                       <div className="text-xs font-semibold text-slate-700 mt-0.5">
@@ -704,79 +807,99 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
                   )}
                 </div>
 
-                {/* Status Progression Controls */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {report.status === 'RECEIVED' && (
-                    <button
-                      onClick={handleAcknowledge}
-                      disabled={actionLoading}
-                      className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-                    >
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>ACKNOWLEDGE REPORT</span>
-                    </button>
-                  )}
+                {/* Status Progression & Rejection Controls */}
+                {report.status !== 'REJECTED' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {report.status === 'RECEIVED' && (
+                      <button
+                        onClick={handleAcknowledge}
+                        disabled={actionLoading}
+                        className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>ACKNOWLEDGE REPORT</span>
+                      </button>
+                    )}
 
-                  {report.status === 'ACKNOWLEDGED' && (
-                    <button
-                      onClick={() => handleStatusTransition('UNDER_ASSESSMENT')}
-                      disabled={actionLoading}
-                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-                    >
-                      <Activity className="w-4 h-4" />
-                      <span>Start Assessment</span>
-                    </button>
-                  )}
+                    {report.status === 'ACKNOWLEDGED' && (
+                      <button
+                        onClick={() => handleStatusTransition('UNDER_ASSESSMENT')}
+                        disabled={actionLoading}
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Activity className="w-4 h-4" />
+                        <span>Start Assessment</span>
+                      </button>
+                    )}
 
-                  {report.status === 'UNDER_ASSESSMENT' && (
-                    <button
-                      onClick={() => handleStatusTransition('ACTION_REQUIRED')}
-                      disabled={actionLoading}
-                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-                    >
-                      <AlertTriangle className="w-4 h-4" />
-                      <span>Mark Action Required</span>
-                    </button>
-                  )}
+                    {report.status === 'UNDER_ASSESSMENT' && (
+                      <button
+                        onClick={() => handleStatusTransition('ACTION_REQUIRED')}
+                        disabled={actionLoading}
+                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Mark Action Required</span>
+                      </button>
+                    )}
 
-                  {report.status === 'ACTION_REQUIRED' && (
-                    <button
-                      onClick={() => handleStatusTransition('RESOLVED')}
-                      disabled={actionLoading}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Resolve Incident</span>
-                    </button>
-                  )}
+                    {report.status === 'ACTION_REQUIRED' && (
+                      <button
+                        onClick={() => handleStatusTransition('RESOLVED')}
+                        disabled={actionLoading}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Resolve Incident</span>
+                      </button>
+                    )}
 
-                  {/* Priority Switcher Dropdown */}
-                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
-                    <span className="text-[11px] font-bold text-slate-500">Set Priority:</span>
-                    <select
-                      value={report.priority || 'UNASSESSED'}
-                      onChange={(e) => handlePriorityChange(e.target.value as ReportPriority)}
-                      disabled={actionLoading}
-                      className="text-xs font-bold text-slate-800 bg-transparent border-none focus:ring-0 cursor-pointer outline-none"
+                    {/* Reject Report Action (Available for active non-resolved reports) */}
+                    {report.status !== 'RESOLVED' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRejectionReason('');
+                          setRejectionError(null);
+                          setShowRejectModal(true);
+                        }}
+                        disabled={actionLoading}
+                        className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 hover:border-rose-400 text-xs font-bold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="Reject this emergency report with mandatory reason"
+                      >
+                        <X className="w-4 h-4 text-rose-600" />
+                        <span>Reject Report</span>
+                      </button>
+                    )}
+
+                    {/* Priority Switcher Dropdown */}
+                    <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                      <span className="text-[11px] font-bold text-slate-500">Set Priority:</span>
+                      <select
+                        value={report.priority || 'UNASSESSED'}
+                        onChange={(e) => handlePriorityChange(e.target.value as ReportPriority)}
+                        disabled={actionLoading}
+                        className="text-xs font-bold text-slate-800 bg-transparent border-none focus:ring-0 cursor-pointer outline-none"
+                      >
+                        <option value="UNASSESSED">UNASSESSED</option>
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="CRITICAL">CRITICAL</option>
+                      </select>
+                    </div>
+
+                    {/* Ground Verification Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowVerificationModal(true)}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
                     >
-                      <option value="UNASSESSED">UNASSESSED</option>
-                      <option value="LOW">LOW</option>
-                      <option value="MEDIUM">MEDIUM</option>
-                      <option value="HIGH">HIGH</option>
-                      <option value="CRITICAL">CRITICAL</option>
-                    </select>
+                      <Eye className="w-4 h-4" />
+                      <span>Ground Verification</span>
+                    </button>
                   </div>
-
-                  {/* Ground Verification Button */}
-                  <button
-                    type="button"
-                    onClick={() => setShowVerificationModal(true)}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span>Ground Verification</span>
-                  </button>
-                </div>
+                )}
               </div>
 
               {/* 2-Column Main Workspace */}
@@ -2143,6 +2266,122 @@ export const ReportDetailsModal: React.FC<ReportDetailsModalProps> = ({
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Report Confirmation Modal */}
+      {showRejectModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reject-modal-title"
+          className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto"
+        >
+          <div className="bg-white border border-rose-200 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-rose-100 bg-rose-50/80 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center font-bold">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="reject-modal-title" className="text-base font-bold text-slate-900">
+                    Reject Emergency Report
+                  </h3>
+                  <span className="font-mono text-xs font-semibold text-rose-700">
+                    {report?.report_id}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!rejecting) {
+                    setShowRejectModal(false);
+                    setRejectionError(null);
+                  }
+                }}
+                disabled={rejecting}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleRejectReport} className="p-5 space-y-4">
+              <div className="p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 text-rose-800 text-xs leading-relaxed flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                <p>
+                  Rejecting this report will remove it from the active incident workflow and prevent it from being assessed by Situation Intelligence.
+                </p>
+              </div>
+
+              {rejectionError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                  <span>{rejectionError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label htmlFor="rejection-reason" className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Reason for rejection <span className="text-rose-600">*</span>
+                </label>
+                <textarea
+                  id="rejection-reason"
+                  value={rejectionReason}
+                  onChange={(e) => {
+                    setRejectionReason(e.target.value);
+                    if (rejectionError) setRejectionError(null);
+                  }}
+                  disabled={rejecting}
+                  rows={4}
+                  placeholder="Provide a mandatory descriptive reason (e.g. verified false alarm, duplicate of INC-1234, non-emergency administrative query, test entry)..."
+                  className="w-full text-xs text-slate-800 border border-slate-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 bg-white placeholder:text-slate-400 resize-y"
+                  required
+                />
+                <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                  <span>Minimum 5 characters required</span>
+                  <span className={rejectionReason.trim().length >= 5 ? 'text-emerald-600 font-semibold' : 'text-slate-400'}>
+                    {rejectionReason.trim().length} chars
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectionError(null);
+                  }}
+                  disabled={rejecting}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={rejecting || rejectionReason.trim().length < 5}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  {rejecting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Rejecting Report...</span>
+                    </>
+                  ) : (
+                    <>
+                      <X className="w-3.5 h-3.5" />
+                      <span>Reject Report</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

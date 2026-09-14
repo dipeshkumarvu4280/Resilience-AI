@@ -55,6 +55,7 @@ import {
   BarChart3,
   Camera,
   ShieldAlert,
+  XCircle,
 } from 'lucide-react';
 
 export const OfficerCommandCenter: React.FC = () => {
@@ -76,6 +77,7 @@ export const OfficerCommandCenter: React.FC = () => {
     under_assessment: 0,
     action_required: 0,
     resolved: 0,
+    rejected: 0,
     total_reports: 0,
   });
 
@@ -134,7 +136,7 @@ export const OfficerCommandCenter: React.FC = () => {
       const [statsData, reportsData] = await Promise.all([
         getOfficerReportStats(),
         getOfficerReports({
-          status: statusFilter || (activeTab === 'incidents' ? 'RECEIVED' : undefined),
+          status: statusFilter || (activeTab === 'rejected-history' ? 'REJECTED' : activeTab === 'incidents' ? 'RECEIVED' : undefined),
           priority: priorityFilter || undefined,
           emergency_type: typeFilter || undefined,
           search: searchTerm.trim() || undefined,
@@ -320,6 +322,8 @@ export const OfficerCommandCenter: React.FC = () => {
         return 'bg-purple-50 text-purple-800 border-purple-200 font-semibold';
       case 'RESOLVED':
         return 'bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold';
+      case 'REJECTED':
+        return 'bg-rose-50 text-rose-800 border-rose-200 font-semibold';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
@@ -461,6 +465,7 @@ export const OfficerCommandCenter: React.FC = () => {
               { id: 'ai-intelligence', label: 'Situation Intelligence' },
               { id: 'incidents', label: 'Incidents' },
               { id: 'reports', label: 'Reports' },
+              { id: 'rejected-history', label: 'Rejected History' },
               { id: 'sensors', label: 'IoT Sensors' },
               { id: 'response-ops', label: 'Field Operations' },
               { id: 'live-monitoring', label: 'Live Monitoring' },
@@ -486,12 +491,12 @@ export const OfficerCommandCenter: React.FC = () => {
           </div>
 
           {/* ========================================================================= */}
-          {/* TAB 1: COMMAND CENTER / REPORTS / INCIDENTS */}
+          {/* TAB 1: COMMAND CENTER / REPORTS / INCIDENTS / REJECTED HISTORY */}
           {/* ========================================================================= */}
-          {(activeTab === 'command-center' || activeTab === 'reports' || activeTab === 'incidents') && (
+          {(activeTab === 'command-center' || activeTab === 'reports' || activeTab === 'incidents' || activeTab === 'rejected-history') && (
             <>
-              {/* 4 Real Backend KPI Cards with Drill-Down Interactions */}
-              <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* 5 Real Backend KPI Cards with Drill-Down Interactions */}
+              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
                 <div
                   onClick={() => {
                     setViewMode('reports');
@@ -510,7 +515,7 @@ export const OfficerCommandCenter: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>{stats.total_incoming > 0 ? 'Awaiting officer acknowledgement' : 'Zero unacknowledged reports'}</span>
+                    <span>{stats.total_incoming > 0 ? 'Awaiting acknowledgement' : 'Zero incoming'}</span>
                     <span className="text-red-600 font-bold opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-[11px]">View →</span>
                   </div>
                 </div>
@@ -533,7 +538,7 @@ export const OfficerCommandCenter: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Logged & assigned to watch officer</span>
+                    <span>Logged & watch assigned</span>
                     <span className="text-amber-600 font-bold opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-[11px]">View →</span>
                   </div>
                 </div>
@@ -547,7 +552,7 @@ export const OfficerCommandCenter: React.FC = () => {
                   className="group p-5 rounded-2xl border border-slate-200 bg-white shadow-xs hover:shadow-md hover:border-blue-300 transition-all duration-200 cursor-pointer flex flex-col justify-between"
                 >
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-blue-700 transition-colors">
-                    <span>UNDER ASSESSMENT</span>
+                    <span>ASSESSMENT</span>
                     <Activity className="w-3.5 h-3.5 text-blue-600 group-hover:scale-110 transition-transform" />
                   </div>
                   <div className="my-2">
@@ -556,7 +561,7 @@ export const OfficerCommandCenter: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Field verification & situation triage</span>
+                    <span>Field verification active</span>
                     <span className="text-blue-600 font-bold opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-[11px]">View →</span>
                   </div>
                 </div>
@@ -570,7 +575,7 @@ export const OfficerCommandCenter: React.FC = () => {
                   className="group p-5 rounded-2xl border border-slate-200 bg-white shadow-xs hover:shadow-md hover:border-purple-300 transition-all duration-200 cursor-pointer flex flex-col justify-between"
                 >
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-purple-700 transition-colors">
-                    <span>ACTION REQUIRED</span>
+                    <span>ACTION REQ.</span>
                     <AlertTriangle className="w-3.5 h-3.5 text-purple-600 group-hover:scale-110 transition-transform" />
                   </div>
                   <div className="my-2">
@@ -579,8 +584,31 @@ export const OfficerCommandCenter: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Dispatch & field resource action needed</span>
+                    <span>Resource dispatch needed</span>
                     <span className="text-purple-600 font-bold opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-[11px]">View →</span>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => {
+                    setViewMode('reports');
+                    setStatusFilter('REJECTED');
+                    setCurrentPage(1);
+                  }}
+                  className="group p-5 rounded-2xl border border-slate-200 bg-white shadow-xs hover:shadow-md hover:border-rose-300 transition-all duration-200 cursor-pointer flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider group-hover:text-rose-700 transition-colors">
+                    <span>REJECTED</span>
+                    <XCircle className="w-3.5 h-3.5 text-rose-600 group-hover:scale-110 transition-transform" />
+                  </div>
+                  <div className="my-2">
+                    <div className="text-3xl font-extrabold text-rose-600 group-hover:scale-105 transition-transform origin-left">
+                      {stats.rejected ?? 0}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Audited rejection history</span>
+                    <span className="text-rose-600 font-bold opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-[11px]">View →</span>
                   </div>
                 </div>
               </div>
@@ -630,7 +658,7 @@ export const OfficerCommandCenter: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-5 h-5 text-red-600" />
                       <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                        {activeTab === 'incidents' ? 'ACTIVE UNRESOLVED INCIDENTS' : 'ACTIVE EMERGENCY REPORTS'}
+                        {activeTab === 'incidents' ? 'ACTIVE UNRESOLVED INCIDENTS' : activeTab === 'rejected-history' ? 'REJECTED REPORTS HISTORY' : 'ACTIVE EMERGENCY REPORTS'}
                       </h2>
                       <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
                         {totalCount} Total
@@ -667,6 +695,7 @@ export const OfficerCommandCenter: React.FC = () => {
                         <option value="UNDER_ASSESSMENT">Under Assessment</option>
                         <option value="ACTION_REQUIRED">Action Required</option>
                         <option value="RESOLVED">Resolved</option>
+                        <option value="REJECTED">Rejected (History)</option>
                       </select>
 
                       <select

@@ -42,6 +42,18 @@ class SmsDeliveryState(BaseModel):
     error_message: Optional[str] = None
 
 
+class WebPushDeliveryState(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+    status: NotificationDeliveryStatus = NotificationDeliveryStatus.NOT_CONFIGURED
+    queued_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
+    provider_message_id: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 class NotificationRecipientInfo(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
     user_id: str
@@ -50,6 +62,7 @@ class NotificationRecipientInfo(BaseModel):
     in_app: InAppDeliveryState = Field(default_factory=InAppDeliveryState)
     whatsapp: WhatsAppDeliveryState = Field(default_factory=WhatsAppDeliveryState)
     sms: SmsDeliveryState = Field(default_factory=SmsDeliveryState)
+    web_push: WebPushDeliveryState = Field(default_factory=WebPushDeliveryState)
 
 
 class NotificationDeepLink(BaseModel):
@@ -85,6 +98,7 @@ class NotificationPreference(BaseModel):
     in_app_enabled: bool = True
     whatsapp_enabled: bool = False
     sms_enabled: bool = False
+    web_push_enabled: bool = True
     phone_number: Optional[str] = None
     notify_critical: bool = True
     notify_high: bool = True
@@ -98,6 +112,7 @@ class NotificationPreferenceUpdate(BaseModel):
     in_app_enabled: Optional[bool] = None
     whatsapp_enabled: Optional[bool] = None
     sms_enabled: Optional[bool] = None
+    web_push_enabled: Optional[bool] = None
     phone_number: Optional[str] = None
     notify_critical: Optional[bool] = None
     notify_high: Optional[bool] = None
