@@ -203,7 +203,10 @@ class Settings(BaseSettings):
     WEATHER_PROVIDER: str = "open_meteo"  # "open_meteo", "google", "disabled"
     WEATHER_API_KEY: Optional[str] = None
     WEATHER_TIMEOUT_SECONDS: float = 4.0
-    WEATHER_CACHE_TTL_SECONDS: int = 600
+    WEATHER_CACHE_TTL_SECONDS: int = 600  # 10 minutes cache TTL
+    WEATHER_RATE_LIMIT_COOLDOWN_SECONDS: int = 60  # 60s circuit breaker cooldown on HTTP 429
+    WEATHER_COORDINATE_PRECISION_DECIMALS: int = 3  # ~110m spatial clustering grid for cache key
+    WEATHER_MAX_RETRIES: int = 2  # Bounded exponential backoff retries on 429
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

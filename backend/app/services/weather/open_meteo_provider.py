@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import logging
 from datetime import datetime, timezone, timedelta
@@ -91,54 +92,79 @@ class OpenMeteoWeatherProvider(WeatherProvider):
             params["apikey"] = settings.WEATHER_API_KEY
 
         timeout_sec = getattr(settings, "WEATHER_TIMEOUT_SECONDS", 4.0)
+        max_retries = getattr(settings, "WEATHER_MAX_RETRIES", 2)
+        data = None
 
-        try:
-            async with httpx.AsyncClient(timeout=timeout_sec) as client:
-                resp = await client.get(url, params=params)
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=timeout_sec) as client:
+                    resp = await client.get(url, params=params)
 
-                if resp.status_code == 429:
-                    logger.warning("Open-Meteo rate limit (429) hit for %f, %f", latitude, longitude)
-                    return WeatherEvidence(
-                        provider=self.name,
-                        fetched_at=now,
-                        latitude=latitude,
-                        longitude=longitude,
-                        data_status=WeatherDataStatus.ERROR,
-                        error_detail="Weather API rate limit (HTTP 429) exceeded.",
-                    )
+                    if resp.status_code == 429:
+                        if attempt < max_retries:
+                            backoff_sec = 1.0 * (2 ** attempt)
+                            logger.warning("Open-Meteo 429 hit for %f, %f. Retrying in %.1fs (attempt %d/%d)", latitude, longitude, backoff_sec, attempt + 1, max_retries)
+                            await asyncio.sleep(backoff_sec)
+                            continue
+                        logger.warning("Open-Meteo rate limit (429) hit after %d retries for %f, %f", max_retries, latitude, longitude)
+                        return WeatherEvidence(
+                            provider=self.name,
+                            provider_type="WEATHER_MODEL",
+                            fetched_at=now,
+                            latitude=latitude,
+                            longitude=longitude,
+                            data_status=WeatherDataStatus.RATE_LIMITED,
+                            rate_limited=True,
+                            error_detail="Weather API rate limit (HTTP 429) exceeded.",
+                        )
 
-                if resp.status_code != 200:
-                    logger.warning("Open-Meteo HTTP %d for %f, %f: %s", resp.status_code, latitude, longitude, resp.text)
-                    return WeatherEvidence(
-                        provider=self.name,
-                        fetched_at=now,
-                        latitude=latitude,
-                        longitude=longitude,
-                        data_status=WeatherDataStatus.ERROR,
-                        error_detail=f"Weather API returned HTTP {resp.status_code}.",
-                    )
+                    if resp.status_code != 200:
+                        logger.warning("Open-Meteo HTTP %d for %f, %f: %s", resp.status_code, latitude, longitude, resp.text)
+                        return WeatherEvidence(
+                            provider=self.name,
+                            provider_type="WEATHER_MODEL",
+                            fetched_at=now,
+                            latitude=latitude,
+                            longitude=longitude,
+                            data_status=WeatherDataStatus.ERROR,
+                            error_detail=f"Weather API returned HTTP {resp.status_code}.",
+                        )
 
-                data = resp.json()
+                    data = resp.json()
+                    break
 
-        except httpx.TimeoutException:
-            logger.warning("Open-Meteo request timed out for %f, %f", latitude, longitude)
+            except httpx.TimeoutException:
+                logger.warning("Open-Meteo request timed out for %f, %f", latitude, longitude)
+                return WeatherEvidence(
+                    provider=self.name,
+                    provider_type="WEATHER_MODEL",
+                    fetched_at=now,
+                    latitude=latitude,
+                    longitude=longitude,
+                    data_status=WeatherDataStatus.ERROR,
+                    error_detail="Weather API request timed out.",
+                )
+            except Exception as exc:
+                logger.warning("Open-Meteo request error for %f, %f: %s", latitude, longitude, exc)
+                return WeatherEvidence(
+                    provider=self.name,
+                    provider_type="WEATHER_MODEL",
+                    fetched_at=now,
+                    latitude=latitude,
+                    longitude=longitude,
+                    data_status=WeatherDataStatus.ERROR,
+                    error_detail=f"Weather API connection error: {str(exc)}",
+                )
+
+        if not data:
             return WeatherEvidence(
                 provider=self.name,
+                provider_type="WEATHER_MODEL",
                 fetched_at=now,
                 latitude=latitude,
                 longitude=longitude,
                 data_status=WeatherDataStatus.ERROR,
-                error_detail="Weather API request timed out.",
-            )
-        except Exception as exc:
-            logger.warning("Open-Meteo request error for %f, %f: %s", latitude, longitude, exc)
-            return WeatherEvidence(
-                provider=self.name,
-                fetched_at=now,
-                latitude=latitude,
-                longitude=longitude,
-                data_status=WeatherDataStatus.ERROR,
-                error_detail=f"Weather API connection error: {str(exc)}",
+                error_detail="Weather API returned empty response.",
             )
 
         # -------------------------------------------------------------
@@ -263,6 +289,7 @@ class OpenMeteoWeatherProvider(WeatherProvider):
 
         return WeatherEvidence(
             provider=self.name,
+            provider_type="WEATHER_MODEL",
             fetched_at=now,
             observation_timestamp=obs_time,
             latitude=latitude,

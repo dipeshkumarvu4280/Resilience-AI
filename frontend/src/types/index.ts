@@ -2984,10 +2984,14 @@ export interface WeatherForecastPeriod {
 
 export interface WeatherEvidence {
   provider: string;
+  provider_type?: string;
   fetched_at: string;
   observation_timestamp?: string | null;
   latitude: number;
   longitude: number;
+  canonical_location?: string | null;
+  cached?: boolean;
+  rate_limited?: boolean;
   temperature_c?: number | null;
   precipitation_mm?: number | null;
   precipitation_probability?: number | null;
@@ -2996,7 +3000,7 @@ export interface WeatherEvidence {
   wind_gust_mps?: number | null;
   condition?: string | null;
   forecast_periods: WeatherForecastPeriod[];
-  data_status: 'FRESH' | 'STALE' | 'UNAVAILABLE' | 'ERROR';
+  data_status: 'FRESH' | 'STALE' | 'RATE_LIMITED' | 'UNAVAILABLE' | 'ERROR';
   freshness_seconds?: number | null;
   error_detail?: string | null;
 }

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class WeatherDataStatus:
     FRESH = "FRESH"
     STALE = "STALE"
+    RATE_LIMITED = "RATE_LIMITED"
     UNAVAILABLE = "UNAVAILABLE"
     ERROR = "ERROR"
 
@@ -23,10 +24,14 @@ class WeatherForecastPeriod(BaseModel):
 
 class WeatherEvidence(BaseModel):
     provider: str = Field(..., description="Weather data provider e.g. 'open_meteo', 'google'")
+    provider_type: str = Field(default="WEATHER_MODEL", description="Data source nature e.g. 'WEATHER_MODEL' (never claimed as physical sensor)")
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when weather was fetched")
     observation_timestamp: Optional[datetime] = Field(None, description="Authoritative timestamp of weather observation")
     latitude: float = Field(..., description="Authoritative incident latitude queried")
     longitude: float = Field(..., description="Authoritative incident longitude queried")
+    canonical_location: Optional[str] = Field(None, description="Normalized spatial coordinate grid key e.g. '16.227:80.538'")
+    cached: bool = Field(default=False, description="True if served from server-side cache")
+    rate_limited: bool = Field(default=False, description="True if provider is currently rate limited")
     
     # Current Observations (null if unavailable, NEVER fake 0)
     temperature_c: Optional[float] = Field(None, description="Observed temperature in Celsius")
@@ -41,6 +46,6 @@ class WeatherEvidence(BaseModel):
     forecast_periods: List[WeatherForecastPeriod] = Field(default_factory=list, description="Future forecast periods")
     
     # Freshness & Status
-    data_status: str = Field(default=WeatherDataStatus.UNAVAILABLE, description="FRESH, STALE, UNAVAILABLE, ERROR")
+    data_status: str = Field(default=WeatherDataStatus.UNAVAILABLE, description="FRESH, STALE, RATE_LIMITED, UNAVAILABLE, ERROR")
     freshness_seconds: Optional[int] = Field(None, description="Age of observation in seconds")
-    error_detail: Optional[str] = Field(None, description="Error reason if data_status is UNAVAILABLE or ERROR")
+    error_detail: Optional[str] = Field(None, description="Error reason if data_status is UNAVAILABLE, RATE_LIMITED or ERROR")

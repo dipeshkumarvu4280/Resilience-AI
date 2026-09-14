@@ -3,7 +3,7 @@ import os
 import re
 from datetime import datetime, timezone, timedelta
 from httpx import AsyncClient, Response
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from app.models.weather import (
     WeatherEvidence,
@@ -18,12 +18,21 @@ from app.models.predictive import (
 from app.models.enums import EmergencyType, SeverityLevel, SituationStatus
 from app.services.weather.open_meteo_provider import OpenMeteoWeatherProvider
 from app.services.weather.google_weather_provider import GoogleWeatherProvider
-from app.services.weather.weather_service import WeatherService
+from app.services.weather.weather_service import WeatherService, weather_service
 from app.services.predictive.interfaces import RawIncidentData, ExtractedFeatureSet
 from app.services.predictive.feature_engine import DeterministicFeatureProvider
 from app.services.predictive.deterministic_escalation_engine import DeterministicEscalationModel
 from app.services.predictive.predictive_service import predictive_service
 from app.db.mongodb import get_database
+
+
+@pytest.fixture(autouse=True)
+def clean_weather_cache():
+    weather_service.clear_cache()
+    weather_service.reset_rate_limit()
+    yield
+    weather_service.clear_cache()
+    weather_service.reset_rate_limit()
 
 
 # -----------------------------------------------------------------------------
@@ -34,9 +43,10 @@ from app.db.mongodb import get_database
 async def test_open_meteo_provider_normalization_success():
     """1 & 3: Verify real weather provider normalization from mock HTTP transport."""
     provider = OpenMeteoWeatherProvider()
+    now = datetime.now(timezone.utc)
     mock_payload = {
         "current": {
-            "time": "2026-09-13T10:30",
+            "time": now.strftime("%Y-%m-%dT%H:%M"),
             "temperature_2m": 31.5,
             "relative_humidity_2m": 78,
             "precipitation": 2.4,
@@ -45,13 +55,20 @@ async def test_open_meteo_provider_normalization_success():
             "wind_gusts_10m": 36.0,
         },
         "minutely_15": {
-            "time": ["2026-09-13T10:30", "2026-09-13T10:45", "2026-09-13T11:00", "2026-09-13T11:30"],
+            "time": [
+                now.strftime("%Y-%m-%dT%H:%M"),
+                (now + timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M"),
+                (now + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M"),
+                (now + timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M"),
+            ],
             "precipitation": [2.4, 3.8, 5.2, 7.0],
             "temperature_2m": [31.5, 31.2, 30.8, 30.0],
             "wind_speed_10m": [18.0, 20.0, 22.0, 25.0],
         },
         "hourly": {
-            "time": ["2026-09-13T10:00", "2026-09-13T11:00", "2026-09-13T12:00"],
+            "time": [
+                (now + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(3)
+            ],
             "precipitation_probability": [85, 90, 95],
             "precipitation": [2.4, 5.2, 8.0],
             "temperature_2m": [31.5, 30.8, 29.5],
@@ -61,7 +78,7 @@ async def test_open_meteo_provider_normalization_success():
         },
     }
 
-    with patch("httpx.AsyncClient.get") as mock_get:
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = mock_payload
@@ -101,7 +118,7 @@ async def test_weather_api_timeout():
     """4: Verify weather provider handles timeout gracefully."""
     import httpx
     provider = OpenMeteoWeatherProvider()
-    with patch("httpx.AsyncClient.get", side_effect=httpx.TimeoutException("Request timed out")):
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=httpx.TimeoutException("Request timed out")):
         res = await provider.fetch_weather(16.2415, 80.6433)
         assert res.data_status == WeatherDataStatus.ERROR
         assert "timed out" in (res.error_detail or "")
@@ -112,13 +129,15 @@ async def test_weather_api_timeout():
 async def test_weather_api_429_rate_limit():
     """5: Verify weather provider handles HTTP 429 rate limit."""
     provider = OpenMeteoWeatherProvider()
-    with patch("httpx.AsyncClient.get") as mock_get:
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+         patch("app.services.weather.open_meteo_provider.asyncio.sleep", new_callable=AsyncMock):
         mock_resp = MagicMock()
         mock_resp.status_code = 429
         mock_get.return_value = mock_resp
 
         res = await provider.fetch_weather(16.2415, 80.6433)
-        assert res.data_status == WeatherDataStatus.ERROR
+        assert res.data_status == WeatherDataStatus.RATE_LIMITED
+        assert res.rate_limited is True
         assert "429" in (res.error_detail or "")
 
 
@@ -126,7 +145,7 @@ async def test_weather_api_429_rate_limit():
 async def test_invalid_weather_response():
     """6: Verify weather provider handles HTTP 500 server error."""
     provider = OpenMeteoWeatherProvider()
-    with patch("httpx.AsyncClient.get") as mock_get:
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_resp = MagicMock()
         mock_resp.status_code = 500
         mock_resp.text = "Internal Server Error"
