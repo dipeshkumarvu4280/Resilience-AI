@@ -88,7 +88,12 @@ class IncidentEvolutionService:
         if is_situation:
             sit_doc = await db["situations"].find_one({"situation_id": clean_id})
             if sit_doc:
-                report_ids = sit_doc.get("report_ids", [])
+                report_ids = list(sit_doc.get("report_ids", []))
+            # Also find any reports historically associated with this situation
+            rep_cursor = db["citizen_reports"].find({"situation_id": clean_id})
+            async for rep in rep_cursor:
+                if rep["report_id"] not in report_ids:
+                    report_ids.append(rep["report_id"])
         else:
             report_ids = [clean_id]
             rep_doc = await db["citizen_reports"].find_one({"report_id": clean_id})
@@ -178,7 +183,7 @@ class IncidentEvolutionService:
                             actor_role=tl.get("actor_role"),
                             summary=tl.get("details", f"Report updated: {tl_type}"),
                             details=tl.get("details"),
-                            severity="INFO",
+                            severity="HIGH" if "REJECT" in tl_type else "INFO",
                             source_reference=r_id,
                             metadata=tl.get("metadata", {}),
                         ))
@@ -237,10 +242,13 @@ class IncidentEvolutionService:
             "$or": [
                 {"report_id": clean_id},
                 {"report_id": {"$in": report_ids}},
+                {"entity_id": clean_id},
+                {"entity_id": {"$in": report_ids}},
             ]
         }
         if situation_id:
             tl_query["$or"].append({"report_id": situation_id})
+            tl_query["$or"].append({"entity_id": situation_id})
             tl_query["$or"].append({"metadata.situation_id": situation_id})
 
         tl_cursor = db["timeline_events"].find(tl_query).sort("timestamp", 1)
@@ -252,7 +260,7 @@ class IncidentEvolutionService:
             e_type = tle.get("event_type", "EVENT")
             events_list.append(IncidentEvolutionEvent(
                 event_id=e_id,
-                target_id=tle.get("report_id", clean_id),
+                target_id=tle.get("report_id") or tle.get("entity_id", clean_id),
                 target_type="SITUATION" if str(tle.get("report_id", "")).startswith("SIT-") else "CITIZEN_REPORT",
                 category=map_event_type_to_category(e_type),
                 event_type=e_type,
@@ -262,9 +270,57 @@ class IncidentEvolutionService:
                 actor_role=tle.get("actor_role"),
                 summary=tle.get("details", f"Operational Event: {e_type}"),
                 details=tle.get("details"),
-                severity="HIGH" if "CONFLICT" in e_type or "ESCALAT" in e_type or "BLOCKED" in e_type else "INFO",
-                source_reference=tle.get("report_id"),
+                severity="HIGH" if "CONFLICT" in e_type or "ESCALAT" in e_type or "BLOCKED" in e_type or "REJECT" in e_type else "INFO",
+                source_reference=tle.get("report_id") or tle.get("entity_id"),
                 metadata=tle.get("metadata", {}),
+            ))
+
+        # Audit logs (e.g. REPORT_REJECTED)
+        audit_query: Dict[str, Any] = {
+            "$or": [
+                {"entity_id": clean_id},
+                {"entity_id": {"$in": report_ids}},
+                {"report_id": clean_id},
+                {"report_id": {"$in": report_ids}},
+            ]
+        }
+        if situation_id:
+            audit_query["$or"].append({"entity_id": situation_id})
+            audit_query["$or"].append({"situation_id": situation_id})
+
+        audit_cursor = db["audit_logs"].find(audit_query).sort("timestamp", 1)
+        async for aud in audit_cursor:
+            aud_id = f"EVT-AUDIT-{aud.get('_id')}"
+            if aud_id in seen_event_ids:
+                continue
+            seen_event_ids.add(aud_id)
+            action = aud.get("action", "AUDIT_LOG")
+            actor = aud.get("user") or {}
+            actor_name = actor.get("full_name") or aud.get("actor_name") or "Authorized Officer"
+            actor_role = actor.get("role") or aud.get("role") or "EMERGENCY_OFFICER"
+            meta = aud.get("metadata") or {}
+            reason_text = meta.get("reason") or meta.get("rejection_reason") or aud.get("details", "")
+            
+            target_entity_id = aud.get("entity_id") or aud.get("report_id", clean_id)
+            is_rejection = "REJECT" in str(action).upper()
+            
+            summary_msg = f"Report {target_entity_id} rejected by {actor_name}. Reason: {reason_text}" if is_rejection else f"Audit action: {action} on {target_entity_id}"
+
+            events_list.append(IncidentEvolutionEvent(
+                event_id=aud_id,
+                target_id=target_entity_id,
+                target_type="CITIZEN_REPORT" if str(target_entity_id).startswith("RES-") or str(target_entity_id).startswith("REP-") else "SITUATION",
+                category=IncidentEvolutionCategory.OFFICER_ACTION if is_rejection else map_event_type_to_category(action),
+                event_type=action,
+                timestamp=ensure_utc(aud.get("timestamp")) or now,
+                actor_id=actor.get("id"),
+                actor_name=actor_name,
+                actor_role=actor_role,
+                summary=summary_msg,
+                details=reason_text or f"Action {action} performed.",
+                severity="HIGH" if is_rejection else "INFO",
+                source_reference=target_entity_id,
+                metadata=meta,
             ))
 
         # -------------------------------------------------------------

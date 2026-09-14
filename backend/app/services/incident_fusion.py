@@ -381,7 +381,13 @@ async def refresh_situation_cluster(db: AsyncIOMotorDatabase, situation_id: str)
         now = datetime.now(timezone.utc)
         await db["situations"].update_one(
             {"situation_id": situation_id},
-            {"$set": {"report_count": 0, "status": SituationStatus.CONTAINED.value, "updated_at": now}}
+            {"$set": {
+                "report_ids": [],
+                "report_count": 0,
+                "status": SituationStatus.CLOSED.value,
+                "situation_summary": f"Situation closed automatically. All {len(report_ids)} member reports were officially rejected by emergency operations.",
+                "updated_at": now,
+            }}
         )
         return await db["situations"].find_one({"situation_id": situation_id})
 
@@ -410,7 +416,14 @@ async def refresh_situation_cluster(db: AsyncIOMotorDatabase, situation_id: str)
         effective_level = level.value
         effective_score = score
 
+    primary_id = situation.get("primary_report_id")
+    if not primary_id or primary_id not in active_report_ids:
+        primary_id = active_report_ids[0]
+
     update_fields = {
+        "report_ids": active_report_ids,
+        "report_count": len(active_report_ids),
+        "primary_report_id": primary_id,
         "center_location.latitude": center_lat,
         "center_location.longitude": center_lon,
         "impact_zone.center_latitude": center_lat,
@@ -421,7 +434,6 @@ async def refresh_situation_cluster(db: AsyncIOMotorDatabase, situation_id: str)
         "computed_severity_level": level.value,
         "severity_score": effective_score,
         "severity_level": effective_level,
-        "report_count": len(report_ids),
         "updated_at": now,
     }
 

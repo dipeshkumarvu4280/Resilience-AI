@@ -20,6 +20,7 @@ api_router.include_router(healthcare.router, prefix="/officer/healthcare", tags=
 api_router.include_router(needs_allocations.router, prefix="/officer", tags=["Needs Assessment & Resource Allocation"])
 api_router.include_router(needs_allocations.router, prefix="/needs", tags=["Needs Assessment & Resource Allocation"])
 api_router.include_router(situations.router, prefix="/officer/situations", tags=["Situation Intelligence & Incident Fusion"])
+api_router.include_router(situations.router, prefix="/situations", tags=["Situation Intelligence & Incident Fusion"])
 api_router.include_router(monitoring.router, prefix="/officer/monitoring", tags=["Live Monitoring & Change Impact Analysis"])
 api_router.include_router(simulation.router, prefix="/officer/simulations", tags=["Simulation & What-If Scenario Engine"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications & Alerts Engine"])

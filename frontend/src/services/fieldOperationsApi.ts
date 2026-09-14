@@ -227,7 +227,7 @@ export const getSituationEvolutionTimeline = async (
   params?: { order?: 'asc' | 'desc'; category?: string }
 ): Promise<import('../types').IncidentEvolutionTimelineResponse> => {
   const res = await api.get<import('../types').IncidentEvolutionTimelineResponse>(
-    `/situations/${situationId}/evolution-timeline`,
+    `/officer/situations/${encodeURIComponent(situationId)}/evolution-timeline`,
     { params }
   );
   return res.data;

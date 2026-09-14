@@ -266,7 +266,8 @@ class PredictiveService:
                     situation_doc = await db["situations"].find_one({"situation_id": situation_id})
 
         # 2. Citizen Reports within Window
-        rep_query: Dict[str, Any] = {}
+        from app.models.enums import ReportStatus
+        rep_query: Dict[str, Any] = {"status": {"$ne": ReportStatus.REJECTED.value}}
         if report_ids:
             rep_query["report_id"] = {"$in": report_ids}
         elif situation_id:

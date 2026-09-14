@@ -1047,16 +1047,33 @@ class EvidenceCorroborationService:
             return None
 
         rep_ids = sit_doc.get("report_ids", [])
-        primary_rep_id = sit_doc.get("primary_report_id") or (rep_ids[0] if rep_ids else None)
+        active_rep_cursor = db["citizen_reports"].find({
+            "report_id": {"$in": rep_ids},
+            "status": {"$ne": ReportStatus.REJECTED.value},
+        })
+        active_reps = await active_rep_cursor.to_list(length=100)
+        if not active_reps:
+            return CorroborationResult(
+                target_id=clean_id,
+                target_type="SITUATION",
+                corroboration_status=CorroborationStatus.NO_CORROBORATION,
+                total_sources_evaluated=0,
+                supporting_source_count=0,
+                conflicting_source_count=0,
+                neutral_source_count=0,
+                explanation="Situation has no active corroborating citizen reports.",
+                corroborating_factors=[],
+                conflict_factors=[],
+                supporting_sources=[],
+                conflicting_sources=[],
+                neutral_sources=[],
+                conflict_details=[],
+                evaluated_at=eval_time or datetime.now(timezone.utc),
+            )
 
-        if not primary_rep_id:
-            return None
+        primary_rep_id = active_reps[0]["report_id"]
 
-        primary_doc = await db["citizen_reports"].find_one({"report_id": primary_rep_id})
-        if not primary_doc:
-            return None
-
-        # Evaluate corroboration with primary report as target and other clustered reports as candidates
+        # Evaluate corroboration with primary active report as target and other clustered reports as candidates
         result = await cls.get_or_evaluate_report_corroboration(primary_rep_id, db, eval_time=eval_time)
         if result:
             result.target_id = clean_id

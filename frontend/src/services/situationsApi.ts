@@ -56,3 +56,14 @@ export const fuseAllReports = async (): Promise<{ message: string; total_situati
   const response = await api.post<{ message: string; total_situations: number }>('/officer/situations/fuse-all');
   return response.data;
 };
+
+export const getSituationEvolutionTimeline = async (
+  situationId: string,
+  params?: { order?: 'asc' | 'desc'; category?: string }
+): Promise<import('../types').IncidentEvolutionTimelineResponse> => {
+  const response = await api.get<import('../types').IncidentEvolutionTimelineResponse>(
+    `/officer/situations/${encodeURIComponent(situationId)}/evolution-timeline`,
+    { params }
+  );
+  return response.data;
+};

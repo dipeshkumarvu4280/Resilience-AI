@@ -733,6 +733,11 @@ async def reject_report(
 
     # If report was linked to a situation cluster, refresh cluster ground truth & severity
     sit_id = doc.get("situation_id")
+    if not sit_id:
+        sit_doc = await db["situations"].find_one({"report_ids": clean_id})
+        if sit_doc:
+            sit_id = sit_doc.get("situation_id")
+
     if sit_id:
         try:
             from app.services.incident_fusion import refresh_situation_cluster
@@ -792,9 +797,9 @@ async def reject_report(
             report_id=clean_id,
             notification_type=SafetyNotificationType.REPORT_REJECTED,
             title="Emergency Report Update",
-            body=f"Your emergency report {clean_id} has been reviewed and rejected.",
+            body=f"Your emergency report {clean_id} has been reviewed and rejected.\n\nReason: {cleaned_reason}",
             event_id=f"EVT-REJ-PUSH-{clean_id}",
-            data={"rejection_reason": cleaned_reason},
+            data={"rejection_reason": cleaned_reason, "report_id": clean_id, "status": "REJECTED"},
             db=db,
         )
     except Exception as push_err:

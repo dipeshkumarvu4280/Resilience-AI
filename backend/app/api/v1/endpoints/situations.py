@@ -18,6 +18,7 @@ from app.models.enums import (
     UserRole,
     MonitoringEventType,
     EventSourceType,
+    ReportStatus,
 )
 from app.services.monitoring.monitoring_service import MonitoringService
 
@@ -132,20 +133,44 @@ async def get_situation_stats(
     """
     Real-time situation statistics aggregated directly from MongoDB Atlas.
     """
+    active_statuses = [
+        SituationStatus.ACTIVE.value,
+        SituationStatus.RESPONSE_IN_PROGRESS.value,
+        SituationStatus.OFFICER_REVIEW.value,
+        SituationStatus.MONITORING.value,
+    ]
     total = await db["situations"].count_documents({})
-    active = await db["situations"].count_documents({"status": SituationStatus.ACTIVE.value})
-    critical = await db["situations"].count_documents({"severity_level": SeverityLevel.CRITICAL.value})
-    high = await db["situations"].count_documents({"severity_level": SeverityLevel.HIGH.value})
+    active = await db["situations"].count_documents({
+        "status": {"$in": active_statuses},
+        "report_count": {"$gt": 0},
+    })
+    critical = await db["situations"].count_documents({
+        "severity_level": SeverityLevel.CRITICAL.value,
+        "report_count": {"$gt": 0},
+        "status": {"$in": active_statuses},
+    })
+    high = await db["situations"].count_documents({
+        "severity_level": SeverityLevel.HIGH.value,
+        "report_count": {"$gt": 0},
+        "status": {"$in": active_statuses},
+    })
 
-    # Count all unique clustered reports
-    pipeline = [{"$unwind": "$report_ids"}, {"$group": {"_id": None, "unique_reports": {"$addToSet": "$report_ids"}}}]
+    # Count all unique active clustered reports
+    pipeline = [
+        {"$match": {"status": {"$in": active_statuses}, "report_count": {"$gt": 0}}},
+        {"$unwind": "$report_ids"},
+        {"$group": {"_id": None, "unique_reports": {"$addToSet": "$report_ids"}}},
+    ]
     cursor = db["situations"].aggregate(pipeline)
     total_clustered = 0
     async for item in cursor:
         total_clustered = len(item.get("unique_reports", []))
 
     # Average confidence
-    conf_pipeline = [{"$group": {"_id": None, "avg_conf": {"$avg": "$confidence"}}}]
+    conf_pipeline = [
+        {"$match": {"status": {"$in": active_statuses}, "report_count": {"$gt": 0}}},
+        {"$group": {"_id": None, "avg_conf": {"$avg": "$confidence"}}},
+    ]
     conf_cursor = db["situations"].aggregate(conf_pipeline)
     avg_conf = 0.0
     async for c in conf_cursor:
@@ -178,6 +203,16 @@ async def list_situations(
     query: dict = {}
     if status_filter:
         query["status"] = status_filter.value
+    else:
+        # Default active situation feed excludes closed/contained/0-report situations
+        query["status"] = {"$in": [
+            SituationStatus.ACTIVE.value,
+            SituationStatus.RESPONSE_IN_PROGRESS.value,
+            SituationStatus.OFFICER_REVIEW.value,
+            SituationStatus.MONITORING.value,
+        ]}
+        query["report_count"] = {"$gt": 0}
+
     if emergency_type:
         query["emergency_type"] = emergency_type.value
     if severity_level:
@@ -244,8 +279,11 @@ async def get_situation_detail(
     c_lat = situation_obj.center_location.latitude
     c_lon = situation_obj.center_location.longitude
 
-    # Fetch all clustered reports
-    reports_cursor = db["citizen_reports"].find({"report_id": {"$in": situation_obj.report_ids}})
+    # Fetch all active non-rejected clustered reports
+    reports_cursor = db["citizen_reports"].find({
+        "report_id": {"$in": situation_obj.report_ids},
+        "status": {"$ne": ReportStatus.REJECTED.value},
+    })
     clustered_reports: List[ClusteredReportSummary] = []
     
     async for r in reports_cursor:
